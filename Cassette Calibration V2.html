@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walkman Wow &amp; Flutter / Tape Speed &amp; Balance Tester</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b1016;
+  --bg-soft: #101822;
+  --panel: rgba(20, 30, 42, .94);
+  --panel-2: #121c27;
+  --line: #29394a;
+  --line-bright: #3a5064;
+  --text: #edf5f8;
+  --muted: #9aabba;
+  --accent: #67e0c3;
+  --accent-strong: #32c9a8;
+  --warn: #ffcb76;
+  --record: #ff777e;
+  --shadow: 0 18px 44px rgba(0, 0, 0, .22);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(44, 105, 111, .18), transparent 34rem),
+    radial-gradient(ellipse at 95% 12%, rgba(53, 79, 111, .16), transparent 30rem),
+    var(--bg);
+  color: var(--text);
+  font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1180px; margin: 0 auto; padding: 30px 24px 42px; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-size: clamp(2rem, 4.2vw, 3.15rem); line-height: 1.04; letter-spacing: -.045em; margin: 12px 0 12px; }
+h2 { font-size: 1.06rem; letter-spacing: -.015em; margin: 0 0 15px; }
+h3 { font-size: .94rem; margin: 0 0 12px; }
+p { margin-bottom: 1rem; }
+.muted, .small { color: var(--muted); }
+.small { font-size: .86rem; }
+.panel {
+  position: relative;
+  background: linear-gradient(145deg, rgba(23, 34, 47, .98), rgba(16, 24, 34, .98));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: clamp(17px, 2.4vw, 25px);
+  margin: 18px 0;
+  box-shadow: var(--shadow);
+}
+.panel > h2 { display: flex; align-items: center; gap: 10px; }
+.panel > h2::before {
+  content: "";
+  width: 4px; height: 18px; flex: 0 0 4px;
+  border-radius: 5px; background: var(--accent);
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px; }
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 14px; margin-top: 18px; }
+.meter {
+  min-width: 0; margin: 0; padding: 12px;
+  background: linear-gradient(180deg, #111b26, #0c131c);
+  border: 1px solid #2c3c4d; border-radius: 14px;
+  transition: border-color .2s ease, transform .2s ease;
+}
+.meter:hover { border-color: var(--line-bright); transform: translateY(-2px); }
+.meter canvas {
+  display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 480 / 300;
+  border-radius: 9px; box-shadow: inset 0 0 18px rgba(0,0,0,.35);
+}
+.meter figcaption { text-align: center; padding: 10px 3px 2px; }
+.rd { font-size: clamp(1.45rem, 2.5vw, 1.8rem); font-weight: 750; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.unit { font-size: .9rem; color: var(--muted); font-weight: 550; }
+button, select, input { font: inherit; }
+button {
+  border: 1px solid transparent; border-radius: 10px; padding: 10px 15px;
+  font-weight: 720; cursor: pointer; background: var(--accent); color: #06251f;
+  box-shadow: 0 3px 0 rgba(0,0,0,.12);
+  transition: transform .15s ease, filter .15s ease, border-color .15s ease;
+}
+button:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0); }
+button.secondary { background: #1a2836; color: var(--text); border-color: #34485a; box-shadow: none; }
+button.rec-btn { background: #ff777e; color: #300b10; }
+button:disabled { opacity: .42; cursor: not-allowed; box-shadow: none; }
+.controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+label.field { display: flex; flex-direction: column; gap: 7px; color: #bdcbd6; font-size: .88rem; font-weight: 600; min-width: 0; }
+input, select {
+  width: 100%; background: #0b131c; color: var(--text);
+  border: 1px solid #34475a; border-radius: 10px; padding: 10px 12px; min-width: 0;
+  outline: none; transition: border-color .15s ease, box-shadow .15s ease;
+}
+input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,224,195,.12); }
+input[type=range] { padding: 0; accent-color: var(--accent); border: 0; box-shadow: none; background: transparent; }
+.status { padding: 11px 13px; border-radius: 10px; background: #0c151e; border: 1px solid #263746; color: var(--muted); margin-top: 13px; }
+.status.good { color: var(--accent); border-color: rgba(103,224,195,.25); background: rgba(27, 87, 73, .15); }
+.status.warn { color: var(--warn); border-color: rgba(255,203,118,.28); }
+.status.rec { color: var(--record); border-color: rgba(255,119,126,.3); background: rgba(100, 29, 37, .15); }
+#chart { width: 100%; height: clamp(190px, 27vw, 260px); display: block; background: #09111a; border: 1px solid #2c3e4f; border-radius: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: #1b2938; border: 1px solid #304255; color: var(--muted); font-size: .78rem; font-weight: 700; white-space: nowrap; }
+.pill.on { background: rgba(31, 91, 77, .42); border-color: rgba(103,224,195,.35); color: #a9ffeb; }
+.pill.rec-on { background: rgba(107,31,31,.4); border-color: rgba(255,119,126,.35); color: #ffc4c8; }
+details summary { cursor: pointer; font-weight: 700; }
+ul { padding-left: 1.25rem; }
+.footer { margin: 24px 0 8px; color: var(--muted); font-size: .82rem; text-align: center; }
+.calc-card { background: #0e1822; border: 1px solid #2c3e4f; border-radius: 13px; padding: 16px; margin-top: 10px; }
+#toggleRecMode { white-space: normal; }
+#summary { line-height: 1.7; }
+@media (max-width: 600px) {
+  main { padding: 20px 13px 30px; }
+  .panel { border-radius: 14px; margin: 13px 0; padding: 16px; }
+  .controls > button { flex: 1 1 auto; }
+  .meters { grid-template-columns: minmax(0, 1fr); }
+  .meter canvas { max-width: 480px; margin: 0 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<main>
+  <div style="padding: 8px 2px 18px;">
+    <span class="pill on">CASSETTE DECK LAB · AUDIO ANALYSIS</span>
+    <h1>Wow &amp; Flutter <span style="color:var(--accent)">/</span> Tape Speed &amp; Balance Tester</h1>
+    <p class="muted" style="max-width:760px;margin-bottom:0;">A precision listening and measurement tool for checking cassette-player speed stability, calibrating your reference tone, compensating for record-mode drag, and balancing L/R audio levels.</p>
+  </div>
+
+  <div class="panel">
+    <h2>1. Set up the test</h2>
+    <p class="small muted">Choose the reference tone and analysis settings before starting a measurement.</p>
+    <div class="grid">
+      <label class="field">Reference tone (Hz)<input id="reference" type="number" min="100" max="20000" step="1" value="3000"></label>
+      <label class="field">Capture tolerance
+        <select id="tol"><option value="0.05">±5%</option><option value="0.10">±10%</option><option value="0.20">±20%</option><option value="0.30" selected>±30%</option><option value="0.50">±50%</option></select>
+      </label>
+      <label class="field">Nominal tape speed
+        <select id="nominal"><option value="4.7625">4.76 cm/s</option><option value="9.525">9.53 cm/s</option><option value="custom">Custom</option></select>
+      </label>
+      <label class="field">Analysis window
+        <select id="window"><option value="2">2 seconds</option><option value="4" selected>4 seconds</option><option value="8">8 seconds</option></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel" style="border-color: var(--record);">
+    <h2 style="color: var(--record);">Record Mode Drag Correction</h2>
+    <p class="small muted">Enter your test tone playback frequency below. Enabling correction shifts the speed meter target to match your recorded error directly.</p>
+    
+    <div class="grid">
+      <div class="calc-card">
+        <h3>Recorded Tone Test</h3>
+        <label class="field">Recorded Tone Pitch on Playback (Hz)<input id="recTestHz" type="number" step="0.01" value="3253.25"></label>
+        <div style="margin-top:8px" class="small">Playback Error: <b id="recTestRatio" style="color:var(--record)">+8.44% fast</b></div>
+      </div>
+      <div class="calc-card">
+        <h3>Correction Target</h3>
+        <div style="margin-top:10px" class="small">Target speed offset on meter: <b id="targetPlaySpeed" style="color:var(--accent)">+8.44% fast</b></div>
+      </div>
+    </div>
+
+    <div class="controls" style="margin-top:14px">
+      <button id="toggleRecMode" class="rec-btn">Enable Correction Offset on Meters</button>
+      <span class="pill" id="recPill">Correction: OFF</span>
+    </div>
+    <div id="recStatus" class="status">Correction is currently OFF.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Calibrate this page to your tape (optional)</h2>
+    <p class="small muted">If your reference tape is not exactly on spec, let a trusted source tell this page what the tape's tone really is using the button below.</p>
+    <div class="grid">
+      <label class="field">Trim <span id="trimRead">+6.270%</span><input id="trim" type="range" min="-30" max="30" step="0.001" value="6.27"></label>
+      <label class="field">Effective reference (Hz)<input id="effHz" type="number" step="0.01" value="3188.11"></label>
+    </div>
+    <div class="controls" style="margin-top:12px">
+      <button id="useRead">Use current reading</button>
+      <button id="saveCal">Save calibration</button>
+      <button id="zeroTrim" class="secondary">Reset trim</button>
+    </div>
+    <div id="calMsg" class="status">Loaded saved calibration.</div>
+  </div>
+
+  <div class="panel">
+    <h2>2. Record and analyze</h2>
+    <p class="small muted">Play your calibration tape near the microphone or connect a stereo audio input, then start analysis. Frequency, speed, and L/R balance readings update in real-time.</p>
+    <div class="controls">
+      <button id="start">Start microphone / input</button>
+      <button id="stop" class="secondary" disabled>Stop</button>
+      <button id="reset" class="secondary">Reset results</button>
+      <span class="pill" id="micState">Input off</span>
+      <span class="pill" id="lock">No tone</span>
+    </div>
+    <div id="status" class="status">Press Start and allow microphone access.</div>
+    <div class="controls" style="margin-top:14px">
+      <label class="field">Meter precision
+        <select id="precision">
+          <option value="wide" selected>Wide range</option>
+          <option value="normal">Normal</option>
+          <option value="fine">Fine adjustment</option>
+          <option value="ultra">Ultra-fine adjustment</option>
+        </select>
+      </label>
+    </div>
+    <div class="meters">
+      <figure class="meter"><canvas id="m_level_l" width="480" height="300"></canvas><figcaption><span class="rd" id="r_level_l">—</span> <span class="unit">dB</span><div class="small muted" id="lbl_l">Left Channel Level</div></figcaption></figure>
+      <figure class="meter"><canvas id="m_level_r" width="480" height="300"></canvas><figcaption><span class="rd" id="r_level_r">—</span> <span class="unit">dB</span><div class="small muted" id="lbl_r">Right Channel Level</div></figcaption></figure>
+      <figure class="meter"><canvas id="m_bal" width="480" height="300"></canvas><figcaption><span class="rd" id="r_bal">—</span> <span class="unit">dB</span><div class="small muted" id="balHint">L/R Level Balance</div></figcaption></figure>
+      <figure class="meter"><canvas id="m_freq" width="480" height="300"></canvas><figcaption><span class="rd" id="r_freq">—</span> <span class="unit">Hz</span><div class="small muted" id="freqRange">Waiting for signal</div></figcaption></figure>
+      <figure class="meter"><canvas id="m_speed" width="480" height="300"></canvas><figcaption><span class="rd" id="r_speed">—</span> <span class="unit">%</span><div class="small muted" id="speedAvg">Waiting for signal</div></figcaption></figure>
+      <figure class="meter"><canvas id="m_wf" width="480" height="300"></canvas><figcaption><span class="rd" id="r_wf">—</span> <span class="unit">% RMS</span><div class="small muted">Frequency variation around recent average</div></figcaption></figure>
+      <figure class="meter"><canvas id="m_dev" width="480" height="300"></canvas><figcaption><span class="rd" id="r_dev">—</span> <span class="unit">Hz RMS</span><div class="small muted">Same variation, in Hz</div></figcaption></figure>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Stereo Balance Calibration Guide</h2>
+    <div id="balRecommendation" class="status">Play a stereo tone recording to calculate recommended volume adjustments.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Live frequency trace</h2>
+    <p class="small muted">Recent detected tone frequency over time. Gaps indicate periods when the tone was not locked.</p>
+    <canvas id="chart" width="1000" height="240"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Results and limitations</h2>
+    <p id="summary" class="muted">No measurement yet.</p>
+    <button id="export" class="secondary" disabled>Export CSV</button>
+  </div>
+
+  <p class="footer">Single-file offline-capable utility.</p>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const startBtn=$('start'), stopBtn=$('stop'), resetBtn=$('reset'), exportBtn=$('export');
+  const status=$('status'), micState=$('micState'), lockPill=$('lock'), canvas=$('chart'), ctx=canvas.getContext('2d');
+  
+  let stream=null, audioCtx=null, source=null, splitter=null, analyserL=null, analyserR=null, raf=0;
+  let samples=[], balanceSamples=[], allRows=[], dbL=null, dbR=null;
+  let lastTick=0, okCount=0, badCount=0, locked=false, hadTone=false, seg=0;
+  let lastAvg=null, trim=0, recCompActive=false;
+  const MAX_POINTS=900;
+  const MIN_DB=-70, PROMINENCE_DB=20, LOCK_FRAMES=2, DROP_FRAMES=4, SAMPLE_MS=50;
+
+  const RED='#b83a2e', YEL='#d9a21b', GRN='#3f8f4f';
+  const M={
+    level_l:{title:'LEFT LEVEL',unit:'dBFS'},
+    level_r:{title:'RIGHT LEVEL',unit:'dBFS'},
+    bal:{title:'L/R BAL OFFSET',unit:'dB'},
+    freq:{title:'FREQUENCY',unit:'Hz'},
+    speed:{title:'SPEED ERROR',unit:'%'},
+    wf:{title:'WOW + FLUTTER',unit:'% RMS'},
+    dev:{title:'VARIATION',unit:'Hz RMS'}
+  };
+  for(const k in M){const m=M[k];m.canvas=$('m_'+k);m.g=m.canvas.getContext('2d');m.dirty=true;}
+  
+  function getTargetOffsetPct(){
+    if(!recCompActive) return 0;
+    const nom = nominal();
+    const testHz = Number($('recTestHz').value)||nom;
+    return ((testHz / nom) - 1) * 100;
+  }
+
+  function setRanges(){
+    const ref=effRef(), u=ref*0.001;
+    const precision=$('precision')?.value||'normal';
+    const settings={
+      wide:{freq:.25,speed:25,wf:.6,dev:6},
+      normal:{freq:.10,speed:10,wf:.3,dev:3},
+      fine:{freq:.05,speed:5,wf:.15,dev:1.5},
+      ultra:{freq:.02,speed:2,wf:.08,dev:.8}
+    };
+    const p=settings[precision]||settings.normal, fr=p.freq;
+    
+    // Stereo level ranges
+    const lvlConfig = {min:-80,max:0,ticks:[-80,-60,-40,-20,0],fmt:v=>v,zones:[[-80,-60,RED],[-60,-45,YEL],[-45,-6,GRN],[-6,0,RED]]};
+    Object.assign(M.level_l, lvlConfig);
+    Object.assign(M.level_r, lvlConfig);
+
+    // L/R Balance Offset meter (-12dB Left Heavy to +12dB Right Heavy)
+    Object.assign(M.bal, {
+      min:-12, max:12, ticks:[-12,-8,-4,0,4,8,12],
+      fmt:v=>(v>0?'+R':v<0?'-L':'0'),
+      zones:[[-12,-3,RED],[-3,-1,YEL],[-1,1,GRN],[1,3,YEL],[3,12,RED]]
+    });
+
+    const fmin=ref*(1-fr),fmax=ref*(1+fr);
+    const freqTicks=[-1,-.5,0,.5,1].map(x=>ref*(1+x*fr));
+    Object.assign(M.freq,{min:fmin,max:fmax,ticks:freqTicks,fmt:v=>Math.round(v),
+      zones:[[fmin,ref-fr*ref*.6,RED],[ref-fr*ref*.6,ref-fr*ref*.2,YEL],[ref-fr*ref*.2,ref+fr*ref*.2,GRN],[ref+fr*ref*.6,fmax,RED]]});
+    
+    const sr=p.speed;
+    Object.assign(M.speed,{min:-sr,max:sr,ticks:[-sr,-sr*.6,-sr*.2,0,sr*.2,sr*.6,sr],fmt:v=>(v>0?'+':'')+Number(v.toFixed(2)),
+      zones:[[-sr,-sr*.6,RED],[-sr*.6,-sr*.2,YEL],[-sr*.2,sr*.2,GRN],[sr*.2,sr*.6,YEL],[sr*.6,sr,RED]]});
+    
+    const wr=p.wf;
+    Object.assign(M.wf,{min:0,max:wr,ticks:Array.from({length:7},(_,i)=>wr*i/6),fmt:v=>v.toFixed(2),zones:[[0,wr*.25,GRN],[wr*.25,wr*.5,YEL],[wr*.5,wr,RED]]});
+    
+    const dv=p.dev*u;
+    Object.assign(M.dev,{min:0,max:dv,ticks:Array.from({length:7},(_,i)=>dv*i/6),fmt:v=>String(+v.toFixed(2)),zones:[[0,dv*.25,GRN],[dv*.25,dv*.5,YEL],[dv*.5,dv,RED]]});
+    
+    for(const k in M){const m=M[k];m.dirty=true;if(m.cur===undefined)m.cur=m.target=m.min;}
+  }
+
+  function parkMeters(live){
+    for(const k in M){
+      if(live || (k!=='level_l' && k!=='level_r' && k!=='bal')){
+        if(k==='bal') M[k].target = 0;
+        else M[k].target = M[k].min;
+      }
+    }
+  }
+
+  function drawMeter(m){
+    const g=m.g,W=m.canvas.width,H=m.canvas.height,cx=W/2,cy=H*.93,R=H*.74,A=52*Math.PI/180;
+    const ang=v=>-A+2*A*(Math.min(1.04,Math.max(-.04,(v-m.min)/(m.max-m.min))));
+    const pt=(a,r)=>[cx+r*Math.sin(a),cy-r*Math.cos(a)];
+    g.clearRect(0,0,W,H);
+    const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#f6ecc8');gr.addColorStop(1,'#d8c78b');
+    g.fillStyle=gr;g.fillRect(0,0,W,H);
+    m.zones.forEach(([a,b,col])=>{g.beginPath();g.arc(cx,cy,R*.93,ang(a)-Math.PI/2,ang(b)-Math.PI/2);g.strokeStyle=col;g.lineWidth=R*.07;g.stroke();});
+    g.strokeStyle='#2c2a22';g.fillStyle='#2c2a22';g.textAlign='center';g.textBaseline='middle';g.font='bold '+Math.round(W*.04)+'px system-ui';
+    m.ticks.forEach((t,i)=>{
+      let [x1,y1]=pt(ang(t),R*.78),[x2,y2]=pt(ang(t),R*.89);
+      g.lineWidth=2.5;g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();
+      const [lx,ly]=pt(ang(t),R*.66);g.fillText(m.fmt(t),lx,ly);
+    });
+    g.font='bold '+Math.round(W*.042)+'px system-ui';g.textAlign='left';g.fillText(m.title,W*.04,H*.09);
+    g.textAlign='right';g.font=Math.round(W*.036)+'px system-ui';g.fillText(m.unit,W*.96,H*.09);
+    const a=ang(m.cur),[nx,ny]=pt(a,R*.97);
+    g.strokeStyle='#161510';g.lineWidth=3;g.lineCap='round';g.beginPath();g.moveTo(cx,cy);g.lineTo(nx,ny);g.stroke();
+    g.fillStyle='#2b2a25';g.beginPath();g.arc(cx,cy,W*.03,0,2*Math.PI);g.fill();
+  }
+
+  function tick(){
+    for(const k in M){
+      const m=M[k],d=m.target-m.cur;
+      if(Math.abs(d)>1e-4*(m.max-m.min)||m.dirty){
+        m.cur+=d*.2;
+        if(Math.abs(m.target-m.cur)<1e-4*(m.max-m.min))m.cur=m.target;
+        drawMeter(m);
+        m.dirty=false;
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function updateRecordCalc(){
+    const nom = nominal();
+    const testHz = Number($('recTestHz').value)||nom;
+    const ratio = ((testHz / nom) - 1) * 100;
+    $('recTestRatio').textContent = (ratio >= 0 ? '+' : '') + ratio.toFixed(2) + '% fast';
+    $('targetPlaySpeed').textContent = (ratio >= 0 ? '+' : '') + ratio.toFixed(2) + '% fast';
+
+    if(recCompActive){
+      setRanges();
+      $('recStatus').textContent = `Correction ACTIVE: Target speed on meter is now +${ratio.toFixed(2)}%. Adjust your deck until the needle points here.`;
+      $('recStatus').className = 'status rec';
+    } else {
+      $('recStatus').textContent = 'Correction is currently OFF.';
+      $('recStatus').className = 'status';
+    }
+  }
+
+  $('recTestHz').addEventListener('input', updateRecordCalc);
+  $('toggleRecMode').addEventListener('click', () => {
+    recCompActive = !recCompActive;
+    $('recPill').textContent = recCompActive ? 'Correction: ON' : 'Correction: OFF';
+    $('recPill').className = recCompActive ? 'pill rec-on' : 'pill';
+    $('toggleRecMode').textContent = recCompActive ? 'Disable Correction Offset' : 'Enable Correction Offset on Meters';
+    updateRecordCalc();
+  });
+
+  const CAL_KEY='wftester.calibration.v1';
+  const nominal=()=>Number($('reference').value)||3000;
+  const effRef=()=>+(nominal()*(1+trim/100)).toFixed(3);
+  const fmtTrim=t=>(t>=0?'+':'')+t.toFixed(3)+'%';
+  function calMsg(t,cls=''){const e=$('calMsg');e.textContent=t;e.className='status '+cls;}
+  
+  function updateCal(src){
+    trim=Math.max(-30,Math.min(30,Number.isFinite(trim)?trim:0));
+    if(src!=='slider')$('trim').value=trim;
+    if(src!=='hz')$('effHz').value=effRef();
+    $('trimRead').textContent=fmtTrim(trim);
+    setRanges();
+    if(lastAvg!=null){
+      const eff = effRef();
+      const compShift = getTargetOffsetPct();
+      const sp = ((lastAvg / eff) - 1) * 100 + compShift;
+      M.speed.target=sp;
+    }
+    calMsg('Trim active.');
+  }
+
+  function bindCal(){
+    $('trim').addEventListener('input',e=>{trim=Number(e.target.value);updateCal('slider');});
+    $('effHz').addEventListener('change',e=>{const v=Number(e.target.value);if(v>0)trim=(v/nominal()-1)*100;updateCal();});
+    
+    $('useRead').addEventListener('click',()=>{
+      if(lastAvg==null){calMsg('Play the tape and wait for "Tone locked" first.','warn');return;}
+      const t=(lastAvg/nominal()-1)*100;
+      if(Math.abs(t)>30){calMsg('Reading is more than 30% from nominal.','warn');return;}
+      trim=t;updateCal();calMsg('Set trim to measured '+lastAvg.toFixed(2)+' Hz ('+fmtTrim(trim)+'). Don\'t forget to save!','good');
+    });
+
+    $('zeroTrim').addEventListener('click',()=>{trim=0;updateCal();calMsg('Trim reset.');});
+    $('saveCal').addEventListener('click',()=>{
+      try{localStorage.setItem(CAL_KEY,JSON.stringify({nominal:nominal(),trim}));calMsg('Calibration saved successfully!','good');}
+      catch(e){calMsg('Could not save: '+e.message,'warn');}
+    });
+  }
+
+  function loadCal(){
+    try{const v=JSON.parse(localStorage.getItem(CAL_KEY)||'null');if(v&&v.nominal>0&&Number.isFinite(v.trim)){$('reference').value=v.nominal;trim=v.trim;return true;}}catch(e){}
+    return false;
+  }
+
+  function setStatus(text, cls=''){status.textContent=text;status.className='status '+cls}
+  function setLock(on){lockPill.textContent=on?'Tone locked':'No tone';lockPill.className='pill'+(on?' on':'')}
+  function setText(id,t){$(id).textContent=t}
+  
+  function resetResults(){
+    samples=[];balanceSamples=[];allRows=[];locked=false;okCount=badCount=0;hadTone=false;setLock(false);
+    ['level_l','level_r','bal','freq','speed','wf','dev'].forEach(k=>setText('r_'+k,'—'));
+    parkMeters(false);
+    $('freqRange').textContent='Waiting for signal';
+    $('speedAvg').textContent='Waiting for signal';
+    $('balHint').textContent='L/R Level Balance';
+    $('lbl_l').textContent='Left Channel Level';
+    $('lbl_r').textContent='Right Channel Level';
+    $('balRecommendation').textContent='Play a stereo tone recording to calculate recommended volume adjustments.';
+    $('balRecommendation').className='status';
+    $('summary').textContent='No measurement yet.';
+    exportBtn.disabled=true;
+  }
+
+  function detectChannel(analyser, dbBuffer, ref, tol){
+    analyser.getFloatFrequencyData(dbBuffer);
+    const binHz=audioCtx.sampleRate/analyser.fftSize;
+    const kMin=Math.max(1,Math.floor(ref*(1-tol)/binHz)), kMax=Math.min(dbBuffer.length-2,Math.ceil(ref*(1+tol)/binHz));
+    if(kMax-kMin<4)return null;
+    const v=k=>Math.max(-120,dbBuffer[k]);
+    let best=-Infinity,bk=-1;
+    for(let k=kMin;k<=kMax;k++){if(v(k)>best){best=v(k);bk=k;}}
+    const sorted=Float32Array.from(dbBuffer.subarray(kMin,kMax+1),x=>Math.max(-120,x)).sort();
+    const median=sorted[sorted.length>>1];
+    const a=v(bk-1),b=v(bk),c=v(bk+1),denom=a-2*b+c;
+    const delta=Math.abs(denom)>1e-9?0.5*(a-c)/denom:0;
+    const f=(bk+Math.max(-.5,Math.min(.5,delta)))*binHz;
+    const edge=bk<=kMin||bk>=kMax;
+    return {f,level:best,heard:!edge&&best>MIN_DB&&best-median>=PROMINENCE_DB};
+  }
+
+  function drawChart(){
+    const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle='#273444';ctx.lineWidth=1;
+    for(let i=0;i<=4;i++){const y=20+(h-40)*i/4;ctx.beginPath();ctx.moveTo(50,y);ctx.lineTo(w-12,y);ctx.stroke();}
+    if(samples.length<2)return;
+    const ref=effRef();
+    const rec=samples.slice(-MAX_POINTS),vals=rec.map(s=>s.f);
+    const lo=Math.min(ref,...vals),hi=Math.max(ref,...vals),pad=Math.max((hi-lo)*.18,2);
+    const min=lo-pad,max=hi+pad;
+    ctx.strokeStyle='#70d6c2';ctx.lineWidth=2;ctx.beginPath();
+    rec.forEach((s,i)=>{const x=50+(w-62)*i/Math.max(1,rec.length-1),y=20+(h-40)*(max-s.f)/(max-min);
+      if(i===0||s.seg!==rec[i-1].seg)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.stroke();
+  }
+
+  function analyze(){
+    raf=requestAnimationFrame(analyze);
+    if(!analyserL||!analyserR||!audioCtx)return;
+    const now=performance.now();if(now-lastTick<SAMPLE_MS)return;lastTick=now;
+    
+    const nom=Number($('reference').value),ref=+(nom*(1+trim/100)).toFixed(3),tol=Number($('tol').value)||.1;
+    const dL=detectChannel(analyserL, dbL, ref, tol);
+    const dR=detectChannel(analyserR, dbR, ref, tol);
+    
+    if(!dL || !dR) return;
+
+    // 1. Instantaneous values drive both the physical needles AND the large main text (.rd)
+    M.level_l.target=Math.max(M.level_l.min, Math.min(M.level_l.max, dL.level));
+    M.level_r.target=Math.max(M.level_r.min, Math.min(M.level_r.max, dR.level));
+    
+    const instantBalDiff = dR.level - dL.level;
+    M.bal.target=Math.max(M.bal.min, Math.min(M.bal.max, instantBalDiff));
+
+    setText('r_level_l', dL.level.toFixed(1));
+    setText('r_level_r', dR.level.toFixed(1));
+    setText('r_bal', (instantBalDiff >= 0 ? '+' : '') + instantBalDiff.toFixed(1));
+
+    // 2. Windowed Rolling Average values are computed for the sub-captions and guidance
+    const analysisWindowSec = Number($('window').value) || 4;
+    const winMs = analysisWindowSec * 1000;
+    
+    balanceSamples.push({perf: now, diff: instantBalDiff, l: dL.level, r: dR.level});
+    balanceSamples = balanceSamples.filter(s => now - s.perf <= winMs);
+
+    const avgBalDiff = balanceSamples.reduce((acc, s) => acc + s.diff, 0) / Math.max(1, balanceSamples.length);
+    const avgL = balanceSamples.reduce((acc, s) => acc + s.l, 0) / Math.max(1, balanceSamples.length);
+    const avgR = balanceSamples.reduce((acc, s) => acc + s.r, 0) / Math.max(1, balanceSamples.length);
+
+    // Update Sub-captions with Averages
+    $('lbl_l').textContent = `Left Avg: ${avgL.toFixed(1)} dB (${analysisWindowSec}s)`;
+    $('lbl_r').textContent = `Right Avg: ${avgR.toFixed(1)} dB (${analysisWindowSec}s)`;
+
+    const absDiff = Math.abs(avgBalDiff);
+    const ratio = Math.pow(10, absDiff / 20);
+    const recEl = $('balRecommendation');
+
+    if(dL.level < -60 && dR.level < -60) {
+      recEl.textContent = "Signal too low to evaluate balance. Increase output level.";
+      recEl.className = "status";
+    } else if (absDiff <= 0.4) {
+      recEl.textContent = `PERFECT BALANCE: Channels average within ${absDiff.toFixed(1)} dB over the last ${analysisWindowSec}s. No deck adjustment needed.`;
+      recEl.className = "status good";
+      $('balHint').textContent = `Balanced (${analysisWindowSec}s Avg: ${(avgBalDiff>=0?'+':'')+avgBalDiff.toFixed(1)} dB)`;
+    } else if (avgBalDiff > 0) {
+      recEl.textContent = `RIGHT CHANNEL IS LOUDER BY AVG ${absDiff.toFixed(1)} dB (Right is ~${ratio.toFixed(2)}x as loud as Left over ${analysisWindowSec}s). ` +
+        `To fix: LOWER your deck's Right Record Level potentiometer by ~${absDiff.toFixed(1)} dB, OR INCREASE the Left Record Level.`;
+      recEl.className = "status warn";
+      $('balHint').textContent = `Right +${absDiff.toFixed(1)} dB Avg`;
+    } else {
+      recEl.textContent = `LEFT CHANNEL IS LOUDER BY AVG ${absDiff.toFixed(1)} dB (Left is ~${ratio.toFixed(2)}x as loud as Right over ${analysisWindowSec}s). ` +
+        `To fix: LOWER your deck's Left Record Level potentiometer by ~${absDiff.toFixed(1)} dB, OR INCREASE the Right Record Level.`;
+      recEl.className = "status warn";
+      $('balHint').textContent = `Left +${absDiff.toFixed(1)} dB Avg`;
+    }
+
+    const heard = dL.heard || dR.heard;
+    const bestTone = dL.heard ? dL : dR;
+
+    if(heard){okCount++;badCount=0;}else{badCount++;okCount=0;}
+    if(!locked&&okCount>=LOCK_FRAMES){locked=true;hadTone=true;seg++;setLock(true);}
+    if(locked&&badCount>=DROP_FRAMES){locked=false;setLock(false);}
+    
+    if(locked&&heard){
+      const f=bestTone.f;
+      samples.push({perf:now,f,seg});if(samples.length>MAX_POINTS)samples.shift();
+      allRows.push({
+        time:new Date().toISOString(),
+        frequency_hz:f,
+        reference_hz:ref,
+        speed_error_percent:(f/ref-1)*100,
+        left_level_db: dL.level,
+        right_level_db: dR.level,
+        balance_diff_db: instantBalDiff,
+        balance_avg_db: avgBalDiff
+      });
+      if(allRows.length>20000)allRows.shift();
+      
+      const compShift = getTargetOffsetPct();
+      const vals=samples.filter(s=>s.seg===seg&&now-s.perf<=winMs).map(s=>s.f);
+      const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+      const rms=Math.sqrt(vals.reduce((a,b)=>a+(b-avg)*(b-avg),0)/vals.length);
+      lastAvg=avg;const wf=100*rms/avg;
+      
+      const avgCompSpd = ((avg/ref)-1)*100 + compShift;
+      const speedVals = vals.map(val => ((val/ref)-1)*100 + compShift);
+      const minSpd = Math.min(...speedVals);
+      const maxSpd = Math.max(...speedVals);
+
+      M.freq.target=f;M.speed.target=avgCompSpd;
+      setText('r_freq',f.toFixed(2));
+      setText('r_speed',avgCompSpd.toFixed(2));
+      if(vals.length>=10){M.wf.target=wf;M.dev.target=rms;setText('r_wf',wf.toFixed(3));setText('r_dev',rms.toFixed(2));}
+      
+      $('freqRange').textContent='Recent average: '+avg.toFixed(2)+' Hz · range '+Math.min(...vals).toFixed(1)+'–'+Math.max(...vals).toFixed(1)+' Hz';
+      $('speedAvg').textContent='Recent average: '+(avgCompSpd>=0?'+':'')+avgCompSpd.toFixed(2)+'% · range '+(minSpd>=0?'+':'')+minSpd.toFixed(2)+'–'+(maxSpd>=0?'+':'')+maxSpd.toFixed(2)+'%';
+      
+      let summaryText = 'Current estimated speed error is '+avgCompSpd.toFixed(2)+'%. Short-term frequency variation is '+wf.toFixed(3)+'% RMS.';
+      if(recCompActive) summaryText += ' (Includes Record Correction Offset).';
+      summaryText += ` Audio balance avg (${analysisWindowSec}s): ${(avgBalDiff>=0?'+':'')+avgBalDiff.toFixed(1)} dB (${avgBalDiff > 0 ? 'Right' : 'Left'} Heavy).`;
+      $('summary').textContent = summaryText;
+      exportBtn.disabled=false;
+
+      drawChart();
+    }
+  }
+
+  startBtn.addEventListener('click',async()=>{
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({
+        audio:{
+          channelCount: { ideal: 2 },
+          echoCancellation:false,
+          noiseSuppression:false,
+          autoGainControl:false
+        }
+      });
+      
+      audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      await audioCtx.resume();
+      
+      source=audioCtx.createMediaStreamSource(stream);
+      splitter=audioCtx.createChannelSplitter(2);
+      
+      analyserL=audioCtx.createAnalyser(); analyserL.fftSize=32768; analyserL.smoothingTimeConstant=0;
+      analyserR=audioCtx.createAnalyser(); analyserR.fftSize=32768; analyserR.smoothingTimeConstant=0;
+      
+      dbL=new Float32Array(analyserL.frequencyBinCount);
+      dbR=new Float32Array(analyserR.frequencyBinCount);
+
+      source.connect(splitter);
+      splitter.connect(analyserL, 0);
+      splitter.connect(analyserR, 1);
+
+      startBtn.disabled=true;stopBtn.disabled=false;
+      micState.textContent='Stereo Input Active';setStatus('Connected. Analyzing left/right balance...','good');
+      raf=requestAnimationFrame(analyze);
+    }catch(e){setStatus('Error: '+e.message,'warn');}
+  });
+
+  function stop(){
+    cancelAnimationFrame(raf);
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    if(audioCtx)audioCtx.close();
+    stream=null;audioCtx=null;source=null;splitter=null;analyserL=null;analyserR=null;locked=false;setLock(false);
+    startBtn.disabled=false;stopBtn.disabled=true;micState.textContent='Input off';
+    setStatus('Stopped.');
+  }
+
+  stopBtn.addEventListener('click',stop);
+  resetBtn.addEventListener('click',resetResults);
+  
+  exportBtn.addEventListener('click',()=>{
+    const rows=[
+      ['time','frequency_hz','reference_hz','speed_error_percent','left_level_db','right_level_db','balance_diff_db','balance_avg_db'],
+      ...allRows.map(r=>[
+        r.time,
+        r.frequency_hz.toFixed(4),
+        r.reference_hz,
+        r.speed_error_percent.toFixed(5),
+        r.left_level_db.toFixed(2),
+        r.right_level_db.toFixed(2),
+        r.balance_diff_db.toFixed(2),
+        r.balance_avg_db.toFixed(2)
+      ])
+    ];
+    const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='wow-flutter-tape-speed-balance-results.csv';a.click();URL.revokeObjectURL(url);
+  });
+
+  $('reference').addEventListener('change',()=>{resetResults();updateCal();});
+  $('precision').addEventListener('change',setRanges);
+  
+  loadCal();bindCal();updateCal();updateRecordCalc();
+  drawChart();tick();
+})();
+</script>
+</body>
+</html>
