@@ -61,13 +61,13 @@ p { margin-bottom: 1rem; }
 .meter {
   min-width: 0; margin: 0; padding: 12px;
   background: linear-gradient(180deg, #111b26, #0c131c);
-  border: 1px solid #2c3c4d; border-radius: 2px;
+  border: 1px solid #2c3c4d; border-radius: 14px;
   transition: border-color .2s ease, transform .2s ease;
 }
 .meter:hover { border-color: var(--line-bright); transform: translateY(-2px); }
 .meter canvas {
   display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 480 / 300;
-  border-radius: 99px; box-shadow: inset 0 0 18px rgba(0,0,0,.35);
+  border-radius: 9px; box-shadow: inset 0 0 18px rgba(0,0,0,.35);
 }
 .meter figcaption { text-align: center; padding: 10px 3px 2px; }
 .rd { font-size: clamp(1.45rem, 2.5vw, 1.8rem); font-weight: 750; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
@@ -91,7 +91,6 @@ input, select {
   border: 1px solid #34475a; border-radius: 10px; padding: 10px 12px; min-width: 0;
   outline: none; transition: border-color .15s ease, box-shadow .15s ease;
 }
-/* Elegant custom dropdown styling */
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -147,7 +146,6 @@ ul { padding-left: 1.25rem; }
     <h2>1. Set up the test</h2>
     <p class="small muted">Choose your audio source, reference tone, and analysis settings before starting a measurement.</p>
     
-    <!-- Added Device Selector Dropdown -->
     <div style="margin-bottom: 14px;">
       <label class="field">
         Audio Input Source / Device
@@ -285,7 +283,6 @@ ul { padding-left: 1.25rem; }
   };
   for(const k in M){const m=M[k];m.canvas=$('m_'+k);m.g=m.canvas.getContext('2d');m.dirty=true;}
 
-  // Populate Audio Input Devices
   async function getAudioDevices() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
     try {
@@ -312,10 +309,8 @@ ul { padding-left: 1.25rem; }
     }
   }
 
-  // Device selection change event handler
   audioSourceSelect.addEventListener('change', async () => {
     if (stream) {
-      // Re-start audio capture using the new selected device
       stop();
       await startAudio();
     }
@@ -342,12 +337,10 @@ ul { padding-left: 1.25rem; }
     };
     const p=settings[precision]||settings.normal, fr=p.freq;
     
-    // Stereo level ranges
     const lvlConfig = {min:-80,max:0,ticks:[-80,-60,-40,-20,0],fmt:v=>v,zones:[[-80,-60,RED],[-60,-45,YEL],[-45,-6,GRN],[-6,0,RED]]};
     Object.assign(M.level_l, lvlConfig);
     Object.assign(M.level_r, lvlConfig);
 
-    // L/R Balance Offset meter (-12dB Left Heavy to +12dB Right Heavy)
     Object.assign(M.bal, {
       min:-12, max:12, ticks:[-12,-8,-4,0,4,8,12],
       fmt:v=>(v>0?'+R':v<0?'-L':'0'),
@@ -546,7 +539,6 @@ ul { padding-left: 1.25rem; }
     
     if(!dL || !dR) return;
 
-    // 1. Instantaneous values drive both the physical needles AND the large main text (.rd)
     M.level_l.target=Math.max(M.level_l.min, Math.min(M.level_l.max, dL.level));
     M.level_r.target=Math.max(M.level_r.min, Math.min(M.level_r.max, dR.level));
     
@@ -557,7 +549,6 @@ ul { padding-left: 1.25rem; }
     setText('r_level_r', dR.level.toFixed(1));
     setText('r_bal', (instantBalDiff >= 0 ? '+' : '') + instantBalDiff.toFixed(1));
 
-    // 2. Windowed Rolling Average values are computed for the sub-captions and guidance
     const analysisWindowSec = Number($('window').value) || 4;
     const winMs = analysisWindowSec * 1000;
     
@@ -568,7 +559,6 @@ ul { padding-left: 1.25rem; }
     const avgL = balanceSamples.reduce((acc, s) => acc + s.l, 0) / Math.max(1, balanceSamples.length);
     const avgR = balanceSamples.reduce((acc, s) => acc + s.r, 0) / Math.max(1, balanceSamples.length);
 
-    // Update Sub-captions with Averages
     $('lbl_l').textContent = `Left Avg: ${avgL.toFixed(1)} dB (${analysisWindowSec}s)`;
     $('lbl_r').textContent = `Right Avg: ${avgR.toFixed(1)} dB (${analysisWindowSec}s)`;
 
@@ -660,7 +650,7 @@ ul { padding-left: 1.25rem; }
       };
 
       stream=await navigator.mediaDevices.getUserMedia(constraints);
-      await getAudioDevices(); // Re-populate device labels after permission granted
+      await getAudioDevices();
       
       audioCtx=new (window.AudioContext||window.webkitAudioContext)();
       await audioCtx.resume();
