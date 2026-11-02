@@ -349,8 +349,19 @@ ul { padding-left: 1.25rem; }
 
     const fmin=ref*(1-fr),fmax=ref*(1+fr);
     const freqTicks=[-1,-.5,0,.5,1].map(x=>ref*(1+x*fr));
-    Object.assign(M.freq,{min:fmin,max:fmax,ticks:freqTicks,fmt:v=>Math.round(v),
-      zones:[[fmin,ref-fr*ref*.6,RED],[ref-fr*ref*.6,ref-fr*ref*.2,YEL],[ref-fr*ref*.2,ref+fr*ref*.2,GRN],[ref+fr*ref*.6,fmax,RED]]});
+    Object.assign(M.freq,{
+      min:fmin,
+      max:fmax,
+      ticks:freqTicks,
+      fmt:v=>Math.round(v),
+      zones:[
+        [fmin, ref-fr*ref*.6, RED],
+        [ref-fr*ref*.6, ref-fr*ref*.2, YEL],
+        [ref-fr*ref*.2, ref+fr*ref*.2, GRN],
+        [ref+fr*ref*.2, ref+fr*ref*.6, YEL],
+        [ref+fr*ref*.6, fmax, RED]
+      ]
+    });
     
     const sr=p.speed;
     Object.assign(M.speed,{min:-sr,max:sr,ticks:[-sr,-sr*.6,-sr*.2,0,sr*.2,sr*.6,sr],fmt:v=>(v>0?'+':'')+Number(v.toFixed(2)),
