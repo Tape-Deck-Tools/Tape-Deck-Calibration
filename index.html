@@ -67,7 +67,7 @@ p { margin-bottom: 1rem; }
 .meter:hover { border-color: var(--line-bright); transform: translateY(-2px); }
 .meter canvas {
   display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 480 / 300;
-  border-radius: 9px; box-shadow: inset 0 0 18px rgba(0,0,0,.35);
+  border-radius: 99px; box-shadow: inset 0 0 18px rgba(0,0,0,.35);
 }
 .meter figcaption { text-align: center; padding: 10px 3px 2px; }
 .rd { font-size: clamp(1.45rem, 2.5vw, 1.8rem); font-weight: 750; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
@@ -90,6 +90,22 @@ input, select {
   width: 100%; background: #0b131c; color: var(--text);
   border: 1px solid #34475a; border-radius: 10px; padding: 10px 12px; min-width: 0;
   outline: none; transition: border-color .15s ease, box-shadow .15s ease;
+}
+/* Elegant custom dropdown styling */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2767e0c3%27' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+select option {
+  background: #0d1722;
+  color: #edf5f8;
+  padding: 8px;
 }
 input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,224,195,.12); }
 input[type=range] { padding: 0; accent-color: var(--accent); border: 0; box-shadow: none; background: transparent; }
@@ -129,7 +145,18 @@ ul { padding-left: 1.25rem; }
 
   <div class="panel">
     <h2>1. Set up the test</h2>
-    <p class="small muted">Choose the reference tone and analysis settings before starting a measurement.</p>
+    <p class="small muted">Choose your audio source, reference tone, and analysis settings before starting a measurement.</p>
+    
+    <!-- Added Device Selector Dropdown -->
+    <div style="margin-bottom: 14px;">
+      <label class="field">
+        Audio Input Source / Device
+        <select id="audioSource">
+          <option value="">Default Audio Input</option>
+        </select>
+      </label>
+    </div>
+
     <div class="grid">
       <label class="field">Reference tone (Hz)<input id="reference" type="number" min="100" max="20000" step="1" value="3000"></label>
       <label class="field">Capture tolerance
@@ -186,13 +213,13 @@ ul { padding-left: 1.25rem; }
     <h2>2. Record and analyze</h2>
     <p class="small muted">Play your calibration tape near the microphone or connect a stereo audio input, then start analysis. Frequency, speed, and L/R balance readings update in real-time.</p>
     <div class="controls">
-      <button id="start">Start microphone / input</button>
+      <button id="start">Start input</button>
       <button id="stop" class="secondary" disabled>Stop</button>
       <button id="reset" class="secondary">Reset results</button>
       <span class="pill" id="micState">Input off</span>
       <span class="pill" id="lock">No tone</span>
     </div>
-    <div id="status" class="status">Press Start and allow microphone access.</div>
+    <div id="status" class="status">Press Start and allow audio input access.</div>
     <div class="controls" style="margin-top:14px">
       <label class="field">Meter precision
         <select id="precision">
@@ -236,7 +263,7 @@ ul { padding-left: 1.25rem; }
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const startBtn=$('start'), stopBtn=$('stop'), resetBtn=$('reset'), exportBtn=$('export');
+  const startBtn=$('start'), stopBtn=$('stop'), resetBtn=$('reset'), exportBtn=$('export'), audioSourceSelect=$('audioSource');
   const status=$('status'), micState=$('micState'), lockPill=$('lock'), canvas=$('chart'), ctx=canvas.getContext('2d');
   
   let stream=null, audioCtx=null, source=null, splitter=null, analyserL=null, analyserR=null, raf=0;
@@ -257,6 +284,45 @@ ul { padding-left: 1.25rem; }
     dev:{title:'VARIATION',unit:'Hz RMS'}
   };
   for(const k in M){const m=M[k];m.canvas=$('m_'+k);m.g=m.canvas.getContext('2d');m.dirty=true;}
+
+  // Populate Audio Input Devices
+  async function getAudioDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      
+      const currentSelected = audioSourceSelect.value;
+      audioSourceSelect.innerHTML = '';
+
+      if (audioInputs.length === 0) {
+        audioSourceSelect.innerHTML = '<option value="">Default Audio Input</option>';
+        return;
+      }
+
+      audioInputs.forEach((device, i) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Audio Input ${i + 1}`;
+        if (device.deviceId === currentSelected) option.selected = true;
+        audioSourceSelect.appendChild(option);
+      });
+    } catch (e) {
+      console.warn('Could not enumerate audio devices:', e);
+    }
+  }
+
+  // Device selection change event handler
+  audioSourceSelect.addEventListener('change', async () => {
+    if (stream) {
+      // Re-start audio capture using the new selected device
+      stop();
+      await startAudio();
+    }
+  });
+
+  navigator.mediaDevices?.addEventListener('devicechange', getAudioDevices);
+  getAudioDevices();
   
   function getTargetOffsetPct(){
     if(!recCompActive) return 0;
@@ -580,16 +646,21 @@ ul { padding-left: 1.25rem; }
     }
   }
 
-  startBtn.addEventListener('click',async()=>{
+  async function startAudio(){
     try{
-      stream=await navigator.mediaDevices.getUserMedia({
-        audio:{
+      const selectedDeviceId = audioSourceSelect.value;
+      const constraints = {
+        audio: {
           channelCount: { ideal: 2 },
-          echoCancellation:false,
-          noiseSuppression:false,
-          autoGainControl:false
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          ...(selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : {})
         }
-      });
+      };
+
+      stream=await navigator.mediaDevices.getUserMedia(constraints);
+      await getAudioDevices(); // Re-populate device labels after permission granted
       
       audioCtx=new (window.AudioContext||window.webkitAudioContext)();
       await audioCtx.resume();
@@ -611,7 +682,9 @@ ul { padding-left: 1.25rem; }
       micState.textContent='Stereo Input Active';setStatus('Connected. Analyzing left/right balance...','good');
       raf=requestAnimationFrame(analyze);
     }catch(e){setStatus('Error: '+e.message,'warn');}
-  });
+  }
+
+  startBtn.addEventListener('click', startAudio);
 
   function stop(){
     cancelAnimationFrame(raf);
