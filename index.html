@@ -242,6 +242,11 @@ ul { padding-left: 1.25rem; }
   <div class="panel">
     <h2>Stereo Balance Calibration Guide</h2>
     <div id="balRecommendation" class="status">Play a stereo tone recording to calculate recommended volume adjustments.</div>
+    <div class="controls" style="margin-top:12px;align-items:center">
+      <button id="copyBalanceCorrection" class="secondary" type="button" disabled>Copy Studio Pro Correction</button>
+      <span id="balanceCorrectionText" class="small muted">Waiting for a valid stereo tone measurement.</span>
+    </div>
+    <p class="small muted" style="margin-top:8px">The copied setting uses the average L/R imbalance over your selected analysis window. It applies half the correction to each channel, preserving the overall average level.</p>
   </div>
 
   <div class="panel">
@@ -492,6 +497,44 @@ ul { padding-left: 1.25rem; }
   function setStatus(text, cls=''){status.textContent=text;status.className='status '+cls}
   function setLock(on){lockPill.textContent=on?'Tone locked':'No tone';lockPill.className='pill'+(on?' on':'')}
   function setText(id,t){$(id).textContent=t}
+
+  let latestBalanceCorrection = null;
+  function updateBalanceCorrection(diffDb, valid=true) {
+    const btn = $('copyBalanceCorrection');
+    const label = $('balanceCorrectionText');
+    if (!valid || !Number.isFinite(diffDb)) {
+      latestBalanceCorrection = null;
+      btn.disabled = true;
+      label.textContent = 'Waiting for a valid stereo tone measurement.';
+      return;
+    }
+    // diffDb = Right level - Left level. Positive means Left is weaker.
+    const leftDb = diffDb / 2;
+    const rightDb = -diffDb / 2;
+    latestBalanceCorrection = `BALANCE_V1|L=${leftDb >= 0 ? '+' : ''}${leftDb.toFixed(2)}|R=${rightDb >= 0 ? '+' : ''}${rightDb.toFixed(2)}`;
+    btn.disabled = false;
+    label.textContent = `Recommended export trim: Left ${leftDb >= 0 ? '+' : ''}${leftDb.toFixed(2)} dB · Right ${rightDb >= 0 ? '+' : ''}${rightDb.toFixed(2)} dB`;
+  }
+
+  $('copyBalanceCorrection').addEventListener('click', async () => {
+    if (!latestBalanceCorrection) return;
+    try {
+      await navigator.clipboard.writeText(latestBalanceCorrection);
+      $('balanceCorrectionText').textContent = 'Copied! Paste this setting into TapeDeck Studio Pro.';
+    } catch (err) {
+      const temp = document.createElement('textarea');
+      temp.value = latestBalanceCorrection;
+      document.body.appendChild(temp);
+      temp.select();
+      try {
+        document.execCommand('copy');
+        $('balanceCorrectionText').textContent = 'Copied! Paste this setting into TapeDeck Studio Pro.';
+      } catch (_) {
+        $('balanceCorrectionText').textContent = latestBalanceCorrection;
+      }
+      temp.remove();
+    }
+  });
   
   function resetResults(){
     samples=[];balanceSamples=[];allRows=[];locked=false;okCount=badCount=0;hadTone=false;setLock(false);
@@ -504,6 +547,7 @@ ul { padding-left: 1.25rem; }
     $('lbl_r').textContent='Right Channel Level';
     $('balRecommendation').textContent='Play a stereo tone recording to calculate recommended volume adjustments.';
     $('balRecommendation').className='status';
+    updateBalanceCorrection(NaN, false);
     $('summary').textContent='No measurement yet.';
     exportBtn.disabled=true;
   }
@@ -576,6 +620,7 @@ ul { padding-left: 1.25rem; }
     const absDiff = Math.abs(avgBalDiff);
     const ratio = Math.pow(10, absDiff / 20);
     const recEl = $('balRecommendation');
+    updateBalanceCorrection(avgBalDiff, dL.level >= -60 && dR.level >= -60);
 
     if(dL.level < -60 && dR.level < -60) {
       recEl.textContent = "Signal too low to evaluate balance. Increase output level.";
