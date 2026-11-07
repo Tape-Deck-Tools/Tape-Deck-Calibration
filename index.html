@@ -132,6 +132,19 @@ ul { padding-left: 1.25rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* ---- Speed drift calibrator (music-based) ---- */
+.sd-drop { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; padding: 12px; margin-top: 14px; border: 1.5px dashed var(--line-bright); border-radius: 14px; background: #0c141d; transition: border-color .15s ease, background .15s ease; }
+.sd-drop.is-over { border-color: var(--accent); background: rgba(27, 87, 73, .16); }
+.sd-slot { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); cursor: pointer; transition: border-color .15s ease; }
+.sd-slot:hover { border-color: var(--line-bright); }
+.sd-slot.filled { border-color: rgba(103, 224, 195, .45); }
+.sd-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sd-slot .sd-file { display: block; margin-top: 6px; color: var(--muted); font-size: .86rem; overflow-wrap: anywhere; }
+.sd-big { font-size: clamp(1.9rem, 4.4vw, 2.6rem); font-weight: 750; letter-spacing: -.045em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.sd-progress { display: block; width: 100%; height: 6px; margin-top: 12px; accent-color: var(--accent); }
+#sdWarnings { margin: 10px 0 0; color: var(--warn); font-size: .86rem; }
+#sdWarnings:empty { display: none; }
 </style>
 </head>
 <body>
@@ -205,6 +218,56 @@ ul { padding-left: 1.25rem; }
       <button id="zeroTrim" class="secondary">Reset trim</button>
     </div>
     <div id="calMsg" class="status">Loaded saved calibration.</div>
+  </div>
+
+  <div class="panel" id="sdPanel">
+    <h2>Measure speed drift with music</h2>
+    <p class="small muted">Drop the digital master of a track and a short Walkman recording of the start of that same track. The page compares how long the same stretch of music lasts in each file and reports the Walkman's speed error. Apply it to turn your 3000&nbsp;Hz tone target into the true target for the motor trim pot.</p>
+
+    <div class="grid">
+      <label class="field">Baseline tone reading (Hz)
+        <input id="sdBaselineHz" type="number" step="0.01" min="1" value="3000">
+      </label>
+      <label class="field">Adjusted target (Hz)
+        <input id="sdTargetHz" type="number" step="0.01" value="3000.00" readonly>
+      </label>
+    </div>
+
+    <div id="sdDrop" class="sd-drop">
+      <div class="sd-slot" id="sdSlotDigital" data-role="digital" tabindex="0" role="button" aria-label="Digital master. Drop a file here or press Enter to choose one.">
+        <b>Digital master</b>
+        <span class="sd-file" id="sdNameDigital"></span>
+      </div>
+      <div class="sd-slot" id="sdSlotWalkman" data-role="walkman" tabindex="0" role="button" aria-label="Walkman recording. Drop a file here or press Enter to choose one.">
+        <b>Walkman recording</b>
+        <span class="sd-file" id="sdNameWalkman"></span>
+      </div>
+    </div>
+    <input id="sdFileInput" type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg,.opus,.aif,.aiff" hidden>
+    <p class="small muted" style="margin:8px 0 0">Drop both files anywhere on the page, or onto one box. Two files dropped together fill the boxes in order; use Swap files if they land the wrong way round.</p>
+
+    <progress id="sdProgress" class="sd-progress" max="100" value="0" hidden></progress>
+    <div id="sdStatus" class="status" role="status" aria-live="polite">Drop the digital master and the Walkman recording of the same track.</div>
+
+    <div class="grid" style="margin-top:14px">
+      <div class="calc-card">
+        <h3>Speed offset</h3>
+        <div class="sd-big" id="sdOffset">—</div>
+        <div class="small muted" id="sdOffsetNote">Waiting for both files</div>
+      </div>
+      <div class="calc-card">
+        <h3>New target tone</h3>
+        <div class="small" id="sdFormula" style="color:var(--accent)">—</div>
+        <div class="small muted" style="margin-top:6px">Always calculated from the baseline, so pressing Apply twice does not compound.</div>
+      </div>
+    </div>
+    <p class="small muted" id="sdDetail" style="margin:12px 0 0">—</p>
+    <ul id="sdWarnings"></ul>
+
+    <div class="controls" style="margin-top:14px">
+      <button id="sdApply" type="button" disabled>Apply offset to target tone</button>
+      <button id="sdSwap" class="secondary" type="button" disabled>Swap files</button>
+    </div>
   </div>
 
   <div class="panel">
@@ -769,6 +832,713 @@ ul { padding-left: 1.25rem; }
   loadCal();bindCal();updateCal();updateRecordCalc();
   drawChart();tick();
 })();
+</script>
+<script>
+/*!
+ * Cassette Deck Lab · Speed Drift Calibrator
+ * ---------------------------------------------------------------------------
+ * Measures how far a Walkman's playback speed is off by comparing
+ *   (a) the DIGITAL MASTER of a track, with
+ *   (b) a SHORT Walkman recording of the START of that same track.
+ *
+ * Because the Walkman capture is short, the drift cannot be measured against
+ * the whole master. Instead two 5 s chunks are taken from the Walkman capture
+ * (one near its beginning, one near its end) and each one is located inside the
+ * digital master by cross-correlation. Then:
+ *
+ *   Walkman elapsed samples = distance between the two chunks in the capture
+ *   Digital elapsed samples = distance between the two matches in the master
+ *
+ *   Speed Offset % = ((Digital Elapsed / Walkman Elapsed) - 1) * 100
+ *
+ * Positive offset  -> the Walkman plays FAST (the capture is shorter than the master).
+ * Negative offset  -> the Walkman plays SLOW.
+ *
+ * Pipeline (all heavy work runs in an inline-blob Web Worker):
+ *   1. Main thread: decodeAudioData() both files at one shared sample rate.
+ *   2. Worker: mono mixdown + light pre-emphasis.
+ *   3. Worker: pick the most energetic 5 s chunk near the start and near the end
+ *      of the Walkman capture.
+ *   4. Worker, COARSE: normalized cross-correlation of 200 Hz loudness envelopes
+ *      (robust to speed error and tape EQ) -> approximate position in the master.
+ *   5. Worker, FINE: the Walkman chunk is time-compensated by the current speed
+ *      estimate, then correlated at full rate in a narrow window with
+ *      sub-sample (parabolic) peak interpolation. Repeated to converge.
+ *
+ * Public API:  window.CassetteSpeedLab = { CONFIG, analyzeFiles, computeTargetHz }
+ * Markup:      see the "sd*" element ids used in init() below.
+ * ---------------------------------------------------------------------------
+ */
+(() => {
+  'use strict';
+
+  /* ===================================================================== *
+   *  CONFIGURATION
+   * ===================================================================== */
+  const CONFIG = {
+    // --- analysis ---------------------------------------------------------
+    analysisSampleRate: 22050,  // Both files are decoded/resampled to this rate (saves memory + time).
+    chunkSec: 5,                // Length of each correlation chunk.
+    startRegionSec: 45,         // Start chunk is picked from the first N s of the Walkman capture...
+    endRegionSec: 45,           // ...and the end chunk from the last N s.
+    maxOffsetSec: 30,           // Max music offset between files (late record press, lead-in, etc.).
+    maxSpeedErrorPct: 10,       // Search window: |speed error| above this is treated as a failed match.
+    envRateHz: 200,             // Envelope rate for the coarse stage.
+    coarseSpeedStepPct: 1.5,    // Coarse stage tries speed hypotheses on this grid across +/-maxSpeedErrorPct.
+    fineSearchRadiusSec: 0.35,  // +/- search radius around the coarse hit in the fine stage.
+    refinePasses: 3,            // Fine-stage iterations (each re-stretches the template).
+    preEmphasis: 0.95,          // First-order high-pass; sharpens correlation peaks.
+    minWalkmanSec: 15,          // Reject captures shorter than this.
+    minSpanSec: 8,              // Reject if the two chunks are closer than this.
+    warnSpanSec: 20,            // Warn (do not reject) below this span.
+    minNCC: 0.015,              // Sanity floor for the fine-stage correlation (wow/flutter keeps real values low).
+    minFineRatio: 2.0,          // Fine peak must beat its runner-up by this factor.
+    minPeakRatio: 1.5,          // Coarse peak must beat its runner-up by this factor.
+
+    // --- target frequency -------------------------------------------------
+    // 'divide'   : target = baseline / (1 + offset)   <- physically consistent, see computeTargetHz()
+    // 'multiply' : target = baseline * (1 + offset)   <- literal "add the offset" behaviour
+    applyMode: 'divide',
+    maxTargetShiftPct: 30,      // Refuse to apply a shift larger than this.
+
+    // --- host-page integration -------------------------------------------
+    hostTargetInputId: 'effHz',      // Optional existing numeric input that receives the new target (null to disable).
+    hostReferenceInputId: 'reference' // Optional input used to pre-fill the baseline (null to disable).
+  };
+
+  /* ===================================================================== *
+   *  WORKER SOURCE
+   *  workerMain() is serialised with Function.prototype.toString() and run
+   *  from a Blob URL, so it MUST NOT reference anything outside itself.
+   * ===================================================================== */
+  /* WORKER_BEGIN */
+  function workerMain() {
+    'use strict';
+
+    const progress = (stage, pct) => self.postMessage({ type: 'progress', stage, pct });
+
+    /* ---------- FFT (iterative radix-2, in place, Float64) ---------- */
+    function nextPow2(n) { let p = 1; while (p < n) p <<= 1; return p; }
+
+    function fft(re, im, inverse) {
+      const n = re.length;
+      for (let i = 1, j = 0; i < n; i++) {           // bit-reversal permutation
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) {
+          let t = re[i]; re[i] = re[j]; re[j] = t;
+          t = im[i]; im[i] = im[j]; im[j] = t;
+        }
+      }
+      for (let len = 2; len <= n; len <<= 1) {       // butterflies
+        const half = len >> 1;
+        const ang = (inverse ? 2 : -2) * Math.PI / len;
+        const wlr = Math.cos(ang), wli = Math.sin(ang);
+        for (let i = 0; i < n; i += len) {
+          let wr = 1, wi = 0;
+          for (let k = 0; k < half; k++) {
+            const a = i + k, b = a + half;
+            const xr = re[b] * wr - im[b] * wi;
+            const xi = re[b] * wi + im[b] * wr;
+            re[b] = re[a] - xr; im[b] = im[a] - xi;
+            re[a] += xr;        im[a] += xi;
+            const nwr = wr * wlr - wi * wli;
+            wi = wr * wli + wi * wlr; wr = nwr;
+          }
+        }
+      }
+      if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    }
+
+    /**
+     * Normalized cross-correlation of template t against every lag of search s.
+     * out[k] = sum_i s[k+i]*t[i] / (|s[k..k+n)| * |t|),  k = 0 .. s.length - t.length
+     * Computed with FFTs: O(N log N) instead of O(m*n).
+     */
+    function xcorrNCC(s, t) {
+      const m = s.length, n = t.length;
+      if (m < n) throw new Error('Search window is shorter than the template.');
+      const N = nextPow2(m + n);
+      const ar = new Float64Array(N), ai = new Float64Array(N);
+      const br = new Float64Array(N), bi = new Float64Array(N);
+      ar.set(s); br.set(t);
+      fft(ar, ai, false); fft(br, bi, false);
+      for (let i = 0; i < N; i++) {                  // A * conj(B)
+        const r = ar[i] * br[i] + ai[i] * bi[i];
+        const q = ai[i] * br[i] - ar[i] * bi[i];
+        ar[i] = r; ai[i] = q;
+      }
+      fft(ar, ai, true);
+
+      let tEnergy = 0;
+      for (let i = 0; i < n; i++) tEnergy += t[i] * t[i];
+      const tNorm = Math.sqrt(tEnergy);
+      const pre = new Float64Array(m + 1);           // running energy of s
+      for (let i = 0; i < m; i++) pre[i + 1] = pre[i] + s[i] * s[i];
+
+      const out = new Float64Array(m - n + 1);
+      for (let k = 0; k < out.length; k++) {
+        const d = Math.sqrt(pre[k + n] - pre[k]) * tNorm;
+        out[k] = d > 1e-12 ? ar[k] / d : 0;
+      }
+      return out;
+    }
+
+    /** Highest peak, runner-up outside +/-exclusion, and sub-sample position. */
+    function findPeak(ncc, exclusion) {
+      let bi = 0, bv = -Infinity;
+      for (let k = 0; k < ncc.length; k++) if (ncc[k] > bv) { bv = ncc[k]; bi = k; }
+      let sv = -Infinity;
+      for (let k = 0; k < ncc.length; k++) {
+        if (Math.abs(k - bi) > exclusion && ncc[k] > sv) sv = ncc[k];
+      }
+      let frac = 0;
+      if (bi > 0 && bi < ncc.length - 1) {
+        const a = ncc[bi - 1], b = ncc[bi], c = ncc[bi + 1];
+        const d = a - 2 * b + c;
+        if (Math.abs(d) > 1e-12) frac = Math.max(-0.5, Math.min(0.5, 0.5 * (a - c) / d));
+      }
+      const ratio = sv > 1e-9 ? Math.min(99, bv / sv) : 99;
+      return { pos: bi + frac, value: bv, ratio };
+    }
+
+    /* ---------- signal helpers ---------- */
+    function mixMono(channels, len) {
+      const out = new Float32Array(len);
+      for (let c = 0; c < channels.length; c++) {
+        const ch = channels[c];
+        for (let i = 0; i < len; i++) out[i] += ch[i];
+      }
+      if (channels.length > 1) for (let i = 0; i < len; i++) out[i] /= channels.length;
+      return out;
+    }
+
+    function preEmphasize(x, a) {                     // y[i] = x[i] - a*x[i-1], in place
+      for (let i = x.length - 1; i > 0; i--) x[i] -= a * x[i - 1];
+    }
+
+    /** Start index (within [from,to)) of the most energetic window of n samples. */
+    function pickChunk(x, from, to, n) {
+      const len = to - from;
+      if (len < n) throw new Error('Audio is too short to extract a correlation chunk.');
+      const pre = new Float64Array(len + 1);
+      for (let i = 0; i < len; i++) pre[i + 1] = pre[i] + x[from + i] * x[from + i];
+      const step = Math.max(1, n >> 2);
+      let best = 0, bestE = -1;
+      for (let s = 0; s + n <= len; s += step) {
+        const e = pre[s + n] - pre[s];
+        if (e > bestE) { bestE = e; best = s; }
+      }
+      if (bestE / n < 1e-10) throw new Error('The audio looks silent where a chunk was needed.');
+      return from + best;
+    }
+
+    /** 4th-root-compressed block-RMS envelope, high-passed by a +/-1 s moving mean. */
+    function envelope(x, B, hpBlocks) {
+      const nb = Math.floor(x.length / B);
+      const e = new Float64Array(nb);
+      for (let b = 0; b < nb; b++) {
+        let s = 0;
+        const o = b * B;
+        for (let j = 0; j < B; j++) s += x[o + j] * x[o + j];
+        e[b] = Math.sqrt(Math.sqrt(s / B));
+      }
+      const pre = new Float64Array(nb + 1);
+      for (let i = 0; i < nb; i++) pre[i + 1] = pre[i] + e[i];
+      const out = new Float64Array(nb);
+      for (let i = 0; i < nb; i++) {
+        const lo = Math.max(0, i - hpBlocks), hi = Math.min(nb - 1, i + hpBlocks);
+        out[i] = e[i] - (pre[hi + 1] - pre[lo]) / (hi - lo + 1);
+      }
+      return out;
+    }
+
+    /**
+     * COARSE stage. Correlate the Walkman chunk's envelope against a region of the
+     * digital envelope under several speed hypotheses (the chunk is stretched by
+     * each candidate r first). A 5 s chunk of a 3 % fast tape is ~150 ms out of step
+     * at its ends, which is enough to wreck a single un-stretched correlation.
+     * Returns the best { pos, r, value, ratio } where pos is in region blocks.
+     */
+    function coarseMulti(wEnv, wb, nb, region, tolPct, stepPct, excl) {
+      let best = null;
+      const steps = Math.max(1, Math.ceil(tolPct / stepPct));
+      for (let h = -steps; h <= steps; h++) {
+        const r = 1 + (h * tolPct / steps) / 100;
+        const nOut = Math.floor((nb - 2) * r);
+        if (nOut < 16 || region.length < nOut) continue;
+        const tmpl = new Float64Array(nOut);
+        for (let j = 0; j < nOut; j++) {
+          const p = wb + j / r, i0 = Math.floor(p), f = p - i0;
+          tmpl[j] = wEnv[i0] * (1 - f) + wEnv[i0 + 1] * f;
+        }
+        const pk = findPeak(xcorrNCC(region, tmpl), excl);
+        if (!best || pk.value > best.value) best = { pos: pk.pos, r, value: pk.value, ratio: pk.ratio, nOut };
+      }
+      if (!best) throw new Error('Digital master is too short to search.');
+      return best;
+    }
+
+    /**
+     * FINE stage. Locate the Walkman chunk (starting at sample wStart, n samples
+     * long) inside the digital master `dx`.
+     *
+     * Time model: Walkman sample w corresponds to digital sample  d = w * r,
+     * where r = digitalElapsed / walkmanElapsed. The Walkman chunk is therefore
+     * resampled onto the digital timeline (tmpl[j] = walkman(wStart + j / r))
+     * so that, once r is right, it matches the master sample-for-sample.
+     *
+     * Returns the digital-timeline position of the chunk CENTRE. Centres are used
+     * as anchors because a residual speed error stretches a chunk symmetrically
+     * about its middle.
+     */
+    function fineAnchor(wx, dx, wStart, n, r, dCenterGuess, radius) {
+      const nOut = Math.floor((n - 2) * r);
+      const tmpl = new Float64Array(nOut);
+      let mean = 0;
+      for (let j = 0; j < nOut; j++) {
+        const p = wStart + j / r;
+        const i0 = Math.floor(p), f = p - i0;
+        const v = wx[i0] * (1 - f) + wx[i0 + 1] * f;
+        tmpl[j] = v; mean += v;
+      }
+      mean /= nOut;
+      for (let j = 0; j < nOut; j++) tmpl[j] -= mean;
+
+      const dStart0 = dCenterGuess - (n / 2) * r;
+      const from = Math.max(0, Math.floor(dStart0 - radius));
+      const to = Math.min(dx.length, Math.ceil(dStart0 + nOut + radius));
+      if (to - from < nOut) throw new Error('Digital master ends before the matching section.');
+      const ncc = xcorrNCC(dx.subarray(from, to), tmpl);
+      const pk = findPeak(ncc, Math.max(8, Math.round(radius / 8)));
+      return { anchor: from + pk.pos + (n / 2) * r, ncc: pk.value, ratio: pk.ratio };
+    }
+
+    /* ---------- main analysis ---------- */
+    function analyze(msg) {
+      const sr = msg.sampleRate, C = msg.config;
+      const n = Math.round(C.chunkSec * sr);
+      const tol = C.maxSpeedErrorPct / 100;
+      const B = Math.max(1, Math.round(sr / C.envRateHz));
+      const hp = Math.round(C.envRateHz);             // +/- 1 s
+      const warnings = [];
+
+      const wLen = msg.walkman[0].length;
+      const dLenAll = msg.digital[0].length;
+      if (wLen < C.minWalkmanSec * sr) {
+        throw new Error('The Walkman recording is only ' + (wLen / sr).toFixed(1) +
+          ' s long. Record at least ' + C.minWalkmanSec + ' s of the track.');
+      }
+      if (dLenAll < 3 * n) throw new Error('The digital master is too short.');
+
+      // Only the opening part of the master can contain the Walkman capture.
+      const dLen = Math.min(dLenAll,
+        Math.ceil(wLen / (1 - tol)) + Math.round(C.maxOffsetSec * sr) + 2 * n);
+
+      progress('Mixing down', 3);
+      const wx = mixMono(msg.walkman, wLen);
+      const dx = mixMono(msg.digital, dLen);
+      msg.walkman.length = 0; msg.digital.length = 0;
+      preEmphasize(wx, C.preEmphasis);
+      preEmphasize(dx, C.preEmphasis);
+
+      // --- 1. choose the two Walkman chunks (block aligned) ---------------
+      progress('Choosing chunks', 8);
+      const startEnd = Math.min(Math.round(C.startRegionSec * sr), Math.floor(wLen * 0.4));
+      const endBeg = Math.max(wLen - Math.round(C.endRegionSec * sr), Math.ceil(wLen * 0.6));
+      const ws = Math.floor(pickChunk(wx, 0, startEnd, n) / B) * B;
+      const we = Math.floor(pickChunk(wx, endBeg, wLen, n) / B) * B;
+      const W = we - ws;                               // Walkman elapsed samples (exact)
+      if (W < C.minSpanSec * sr) {
+        throw new Error('The two chunks are only ' + (W / sr).toFixed(1) +
+          ' s apart. Use a longer Walkman recording.');
+      }
+      if (W < C.warnSpanSec * sr) {
+        warnings.push('Short span (' + (W / sr).toFixed(1) + ' s): wow/flutter can dominate. A recording of 30 s or more is better.');
+      }
+
+      // --- 2. COARSE: envelope correlation --------------------------------
+      progress('Building envelopes', 14);
+      const wEnv = envelope(wx, B, hp);
+      const dEnv = envelope(dx, B, hp);
+      const nb = Math.floor(n / B);
+      const excl = Math.round(C.envRateHz);            // ignore runner-ups within 1 s
+
+      progress('Coarse alignment (start)', 24);
+      const tolPct = C.maxSpeedErrorPct;
+      const s1To = Math.min(dEnv.length, Math.ceil((ws * (1 + tol) + C.maxOffsetSec * sr + n) / B));
+      const c1 = coarseMulti(wEnv, ws / B, nb, dEnv.subarray(0, s1To), tolPct, C.coarseSpeedStepPct, excl);
+      const d1 = c1.pos * B + (n / 2) * c1.r;          // digital centre of the start chunk
+
+      progress('Coarse alignment (end)', 40);
+      const e0 = Math.max(0, Math.floor((c1.pos * B + W * (1 - tol) - sr) / B));
+      const e1 = Math.min(dEnv.length, Math.ceil((c1.pos * B + W * (1 + tol) + n * (1 + tol) + sr) / B));
+      if (e1 - e0 < nb) throw new Error('Digital master ends before the end of the Walkman recording.');
+      const c2 = coarseMulti(wEnv, we / B, nb, dEnv.subarray(e0, e1), tolPct, C.coarseSpeedStepPct, excl);
+      const d2 = (e0 + c2.pos) * B + (n / 2) * c2.r;
+
+      let r = (d2 - d1) / W;                           // first speed estimate
+      if (!isFinite(r) || r <= 0) r = 1;
+
+      // --- 3. FINE: stretch-compensated full-rate correlation -------------
+      const radius = Math.round(C.fineSearchRadiusSec * sr);
+      let a1 = { anchor: d1, ncc: 0, ratio: 0 }, a2 = { anchor: d2, ncc: 0, ratio: 0 };
+      for (let p = 0; p < C.refinePasses; p++) {
+        progress('Fine alignment, pass ' + (p + 1) + ' of ' + C.refinePasses, 55 + p * (40 / C.refinePasses));
+        a1 = fineAnchor(wx, dx, ws, n, r, a1.anchor, radius);
+        a2 = fineAnchor(wx, dx, we, n, r, a2.anchor, radius);
+        r = (a2.anchor - a1.anchor) / W;
+      }
+
+      // --- 4. speed offset -------------------------------------------------
+      const D = a2.anchor - a1.anchor;                 // Digital elapsed samples
+      const offsetPct = (D / W - 1) * 100;             // <- the specified formula
+
+      // --- 5. confidence ---------------------------------------------------
+      const minNcc = Math.min(a1.ncc, a2.ncc);
+      const minFine = Math.min(a1.ratio, a2.ratio);
+      const minRatio = Math.min(c1.ratio, c2.ratio);
+      let ok = true;
+      if (minNcc < C.minNCC || minFine < C.minFineRatio) {
+        ok = false;
+        warnings.push('No clear match between the files (peak clarity ' + minFine.toFixed(1) + '). Check that both are the same track and the recording is not badly clipped or noisy.');
+      }
+      if (minRatio < C.minPeakRatio) {
+        ok = false;
+        warnings.push('Ambiguous match: the music repeats, so a chunk could align to the wrong bar. Record a section with a distinctive intro.');
+      }
+      if (Math.abs(offsetPct) > C.maxSpeedErrorPct) {
+        ok = false;
+        warnings.push('Offset is beyond the +/-' + C.maxSpeedErrorPct + '% search range, so the alignment is probably wrong.');
+      }
+
+      progress('Done', 100);
+      return {
+        ok, warnings, sampleRate: sr,
+        offsetPct,
+        digitalElapsedSamples: D,
+        walkmanElapsedSamples: W,
+        spanSec: W / sr,
+        resolutionPct: 100 / W,                        // effect of a 1-sample timing error
+        start: { walkmanSample: ws + n / 2, digitalSample: a1.anchor, ncc: a1.ncc, fineRatio: a1.ratio, ratio: c1.ratio },
+        end:   { walkmanSample: we + n / 2, digitalSample: a2.anchor, ncc: a2.ncc, fineRatio: a2.ratio, ratio: c2.ratio }
+      };
+    }
+
+    self.onmessage = (e) => {
+      try {
+        self.postMessage({ type: 'result', result: analyze(e.data) });
+      } catch (err) {
+        self.postMessage({ type: 'error', message: (err && err.message) || String(err) });
+      }
+    };
+  }
+  /* WORKER_END */
+
+  /* ===================================================================== *
+   *  MAIN THREAD: decoding + worker plumbing
+   * ===================================================================== */
+  let active = null;                                   // { worker, url, reject }
+
+  function cancelActive() {
+    if (!active) return;
+    active.worker.terminate();
+    URL.revokeObjectURL(active.url);
+    const err = new Error('cancelled'); err.cancelled = true;
+    active.reject(err);
+    active = null;
+  }
+
+  function createAudioContext() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('This browser has no Web Audio API.');
+    try { return new AC({ sampleRate: CONFIG.analysisSampleRate }); }
+    catch (_) { return new AC(); }                     // older browsers: keep their native rate
+  }
+
+  /** decodeAudioData() in callback form, so it also works on older Safari. */
+  function decode(file, ctx) {
+    return file.arrayBuffer().then((ab) => new Promise((resolve, reject) => {
+      const p = ctx.decodeAudioData(ab, resolve, reject);
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    })).catch((e) => {
+      throw new Error('Could not decode "' + file.name + '". ' + (e && e.message ? e.message : 'Unsupported or damaged audio file.'));
+    });
+  }
+
+  /** Copy up to 2 channels out of an AudioBuffer (copies can be transferred to the worker). */
+  function extractChannels(buf) {
+    const out = [];
+    for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) out.push(buf.getChannelData(c).slice());
+    return out;
+  }
+
+  /**
+   * Decode both files and run the analysis in a Web Worker.
+   * @param {File} digitalFile  the digital master
+   * @param {File} walkmanFile  the (short) Walkman recording of the same track
+   * @param {(stage:string, pct:number)=>void} [onProgress]
+   * @returns {Promise<object>} analysis result (see worker `analyze()` return value)
+   */
+  async function analyzeFiles(digitalFile, walkmanFile, onProgress) {
+    cancelActive();
+    const ctx = createAudioContext();
+    let msg;
+    try {
+      onProgress && onProgress('Decoding audio', 1);
+      const [dBuf, wBuf] = await Promise.all([decode(digitalFile, ctx), decode(walkmanFile, ctx)]);
+      msg = {
+        digital: extractChannels(dBuf),
+        walkman: extractChannels(wBuf),
+        sampleRate: ctx.sampleRate,                    // identical for both buffers
+        config: CONFIG
+      };
+    } finally {
+      ctx.close && ctx.close();
+    }
+
+    return new Promise((resolve, reject) => {
+      const src = '(' + workerMain.toString() + ')();';
+      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      const worker = new Worker(url);
+      const done = () => { if (active && active.worker === worker) { worker.terminate(); URL.revokeObjectURL(url); active = null; } };
+      active = { worker, url, reject };
+      worker.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'progress') onProgress && onProgress(m.stage, m.pct);
+        else if (m.type === 'result') { done(); resolve(m.result); }
+        else if (m.type === 'error') { done(); reject(new Error(m.message)); }
+      };
+      worker.onerror = (e) => { done(); reject(new Error(e.message || 'The analysis worker crashed.')); };
+      const transfer = msg.digital.concat(msg.walkman).map((a) => a.buffer);
+      worker.postMessage(msg, transfer);               // zero-copy hand-off
+    });
+  }
+
+  /* ===================================================================== *
+   *  TARGET FREQUENCY
+   * ===================================================================== */
+  /**
+   * New tone target for the live meter.
+   *
+   * Why 'divide' is the default: the Walkman reads `baselineHz` on the tone tape
+   * while the music proves it is running `offsetPct` fast. At the CORRECT speed
+   * the same tape therefore reads baselineHz / (1 + offset). Trimming towards
+   * baselineHz * (1 + offset) would push the motor further from true speed.
+   *
+   *   +2.81 %  with a 3000 Hz baseline:
+   *     'divide'   -> 3000 / 1.0281 = 2918.00 Hz   (slow the motor down until the tone reads this)
+   *     'multiply' -> 3000 * 1.0281 = 3084.30 Hz   (literal "add 2.81 %")
+   */
+  function computeTargetHz(baselineHz, offsetPct, mode) {
+    const k = 1 + offsetPct / 100;
+    return (mode || CONFIG.applyMode) === 'multiply' ? baselineHz * k : baselineHz / k;
+  }
+
+  /* ===================================================================== *
+   *  UI CONTROLLER
+   * ===================================================================== */
+  const $ = (id) => document.getElementById(id);
+  const ROLES = ['digital', 'walkman'];
+  const state = { digital: null, walkman: null, result: null, pickRole: null, run: 0 };
+
+  const fmtPct = (v, d) => (v >= 0 ? '+' : '') + v.toFixed(d == null ? 3 : d) + '%';
+  const isAudioFile = (f) => /^(audio|video)\//.test(f.type) || /\.(wav|mp3|flac|ogg|oga|opus|m4a|aac|aif|aiff|wma|mp4)$/i.test(f.name);
+
+  function setStatus(text, cls) { const el = $('sdStatus'); el.textContent = text; el.className = 'status' + (cls ? ' ' + cls : ''); }
+
+  function refreshSlots() {
+    ROLES.forEach((role) => {
+      const cap = role === 'digital' ? 'Digital' : 'Walkman';
+      const slot = $('sdSlot' + cap), name = $('sdName' + cap), f = state[role];
+      slot.classList.toggle('filled', !!f);
+      name.textContent = f ? f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)'
+        : role === 'digital' ? 'Drop the original track here, or click to choose'
+                             : 'Drop the Walkman recording here, or click to choose';
+    });
+    $('sdSwap').disabled = !(state.digital || state.walkman);
+  }
+
+  function clearResult() {
+    state.result = null;
+    $('sdOffset').textContent = '—';
+    $('sdOffsetNote').textContent = 'Waiting for both files';
+    $('sdDetail').textContent = '—';
+    $('sdFormula').textContent = '—';
+    $('sdWarnings').textContent = '';
+    $('sdApply').disabled = true;
+  }
+
+  function assign(files, preferred) {
+    const audio = files.filter(isAudioFile).slice(0, 2);
+    if (!audio.length) { setStatus('Those files do not look like audio. Use WAV, FLAC, MP3, M4A or OGG.', 'warn'); return; }
+    let order;
+    if (preferred) order = [preferred, preferred === 'digital' ? 'walkman' : 'digital'];
+    else {
+      const empty = ROLES.filter((r) => !state[r]);
+      order = empty.length ? empty.concat(ROLES.filter((r) => state[r])) : ROLES.slice();
+    }
+    audio.forEach((f, i) => { state[order[i]] = f; });
+    refreshSlots();
+    maybeRun();
+  }
+
+  function maybeRun() {
+    if (state.digital && state.walkman) { run(); return; }
+    cancelActive(); clearResult(); showProgress(null);
+    setStatus('Add the ' + (state.digital ? 'Walkman recording' : 'digital master') + ' to start the analysis.');
+  }
+
+  function showProgress(pct) {
+    const p = $('sdProgress');
+    p.hidden = pct == null;
+    if (pct != null) p.value = pct;
+  }
+
+  async function run() {
+    const id = ++state.run;
+    clearResult();
+    $('sdSwap').disabled = true;
+    try {
+      const result = await analyzeFiles(state.digital, state.walkman, (stage, pct) => {
+        if (id !== state.run) return;
+        showProgress(pct); setStatus(stage + '…');
+      });
+      if (id !== state.run) return;
+      state.result = result;
+      renderResult(result);
+    } catch (err) {
+      if (err.cancelled || id !== state.run) return;
+      showProgress(null);
+      setStatus(err.message, 'warn');
+    } finally {
+      if (id === state.run) $('sdSwap').disabled = false;
+    }
+  }
+
+  function currentBaseline() { const v = Number($('sdBaselineHz').value); return v > 0 ? v : NaN; }
+
+  function renderResult(r) {
+    showProgress(null);
+    $('sdOffset').textContent = fmtPct(r.offsetPct);
+    $('sdOffsetNote').textContent = Math.abs(r.offsetPct) < 0.005 ? 'Walkman speed matches the master'
+      : r.offsetPct > 0 ? 'Walkman runs fast (capture is shorter than the master)'
+                        : 'Walkman runs slow (capture is longer than the master)';
+    $('sdDetail').textContent =
+      'Digital elapsed ' + Math.round(r.digitalElapsedSamples).toLocaleString() + ' samples, Walkman elapsed ' +
+      r.walkmanElapsedSamples.toLocaleString() + ' samples over ' + r.spanSec.toFixed(1) + ' s at ' + r.sampleRate +
+      ' Hz. Peak clarity ' + r.start.fineRatio.toFixed(1) + '× / ' + r.end.fineRatio.toFixed(1) + '×' +
+      '. Timing resolution ±' + r.resolutionPct.toFixed(5) + '%.';
+    const ul = $('sdWarnings');
+    ul.textContent = '';
+    r.warnings.forEach((w) => { const li = document.createElement('li'); li.textContent = w; ul.appendChild(li); });
+    updatePreview();
+    setStatus(r.ok ? 'Speed offset measured. Review it, then apply it to the target tone.'
+                   : 'Measurement is not reliable enough to apply. See the notes below.', r.ok ? 'good' : 'warn');
+  }
+
+  /** Live preview of the target formula; also gates the Apply button. */
+  function updatePreview() {
+    const r = state.result, base = currentBaseline();
+    if (!r || !(base > 0)) { $('sdApply').disabled = true; return; }
+    const target = computeTargetHz(base, r.offsetPct);
+    const k = 1 + r.offsetPct / 100;
+    $('sdFormula').textContent = target.toFixed(2) + ' Hz = ' + base.toFixed(2) +
+      (CONFIG.applyMode === 'multiply' ? ' × ' : ' ÷ ') + k.toFixed(5);
+    $('sdApply').disabled = !r.ok;
+  }
+
+  /**
+   * Push the shifted target into numeric inputs.
+   *
+   * Worked example (+2.81 % drift, 3000 Hz baseline):
+   *   'multiply' mode:  3000 * 1.0281 = 3084.30 Hz   -> input.value = "3084.30"
+   *   'divide'   mode:  3000 / 1.0281 = 2918.00 Hz   -> input.value = "2918.00"
+   * Either way the string is written with toFixed(2) and the input is then told
+   * about it with a real DOM event so the host page's listeners react.
+   */
+  function injectTargetHz(hz) {
+    const text = hz.toFixed(2);
+
+    // 1) This panel's own read-only target box.
+    $('sdTargetHz').value = text;
+
+    // 2) Optional: the host page's numeric input (the live meter's "Effective reference").
+    //    Setting .value never fires events, so dispatch them to trigger the host's handlers
+    //    (in the Wow & Flutter tester, 'change' on #effHz re-centres the frequency/speed meters).
+    const host = CONFIG.hostTargetInputId && $(CONFIG.hostTargetInputId);
+    if (host) {
+      host.value = text;
+      host.dispatchEvent(new Event('input', { bubbles: true }));
+      host.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // 3) Optional: let any other module listen.
+    document.dispatchEvent(new CustomEvent('cassette:target-applied', {
+      detail: { hz, offsetPct: state.result ? state.result.offsetPct : null }
+    }));
+  }
+
+  function applyOffset() {
+    const r = state.result, base = currentBaseline();
+    if (!r || !r.ok) return;
+    if (!(base > 0)) { setStatus('Enter the baseline tone reading first.', 'warn'); return; }
+    const target = computeTargetHz(base, r.offsetPct);       // always from the baseline, so re-clicking never compounds
+    if (Math.abs((target / base - 1) * 100) > CONFIG.maxTargetShiftPct) {
+      setStatus('That shift is larger than ' + CONFIG.maxTargetShiftPct + '%. Not applied.', 'warn'); return;
+    }
+    injectTargetHz(target);
+    setStatus('Target tone is now ' + target.toFixed(2) + ' Hz. Play the tone tape and turn the motor trim pot until the live reading reaches it.', 'good');
+  }
+
+  function init() {
+    const drop = $('sdDrop');
+    if (!drop) return;
+
+    const host = CONFIG.hostReferenceInputId && $(CONFIG.hostReferenceInputId);
+    if (host && Number(host.value) > 0) $('sdBaselineHz').value = Number(host.value);
+    $('sdTargetHz').value = Number($('sdBaselineHz').value || 0).toFixed(2);
+
+    // Slots: click / keyboard opens the file picker for that slot.
+    const input = $('sdFileInput');
+    document.querySelectorAll('.sd-slot').forEach((slot) => {
+      const open = () => { state.pickRole = slot.dataset.role; input.value = ''; input.click(); };
+      slot.addEventListener('click', open);
+      slot.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+    input.addEventListener('change', () => { assign(Array.from(input.files), state.pickRole); });
+
+    // Drag and drop anywhere on the page. Dropping on a slot targets that slot;
+    // dropping elsewhere fills the empty slots in order (digital first).
+    const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') !== -1;
+    let depth = 0;
+    window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; drop.classList.add('is-over'); } });
+    window.addEventListener('dragleave', (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; drop.classList.remove('is-over'); } });
+    window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });   // allow drop, stop the browser opening the file
+    window.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; drop.classList.remove('is-over');
+      const slot = e.target.closest && e.target.closest('.sd-slot');
+      assign(Array.from(e.dataTransfer.files), slot ? slot.dataset.role : null);
+    });
+
+    $('sdSwap').addEventListener('click', () => {
+      const t = state.digital; state.digital = state.walkman; state.walkman = t;
+      refreshSlots(); maybeRun();
+    });
+    $('sdBaselineHz').addEventListener('input', updatePreview);
+    $('sdApply').addEventListener('click', applyOffset);
+
+    refreshSlots(); clearResult(); showProgress(null);
+    setStatus('Drop the digital master and the Walkman recording of the same track.');
+  }
+
+  window.CassetteSpeedLab = { CONFIG, analyzeFiles, computeTargetHz };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
 </script>
 </body>
 </html>
