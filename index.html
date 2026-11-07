@@ -266,6 +266,7 @@ ul { padding-left: 1.25rem; }
 
     <div class="controls" style="margin-top:14px">
       <button id="sdApply" type="button" disabled>Apply offset to target tone</button>
+      <button id="sdBypass" class="secondary" type="button" disabled style="color: var(--warn); border-color: rgba(255,203,118,.35);">Override &amp; Enable Apply</button>
       <button id="sdSwap" class="secondary" type="button" disabled>Swap files</button>
     </div>
   </div>
@@ -571,7 +572,6 @@ ul { padding-left: 1.25rem; }
       label.textContent = 'Waiting for a valid stereo tone measurement.';
       return;
     }
-    // diffDb = Right level - Left level. Positive means Left is weaker.
     const leftDb = diffDb / 2;
     const rightDb = -diffDb / 2;
     latestBalanceCorrection = `BALANCE_V1|L=${leftDb >= 0 ? '+' : ''}${leftDb.toFixed(2)}|R=${rightDb >= 0 ? '+' : ''}${rightDb.toFixed(2)}`;
@@ -834,95 +834,46 @@ ul { padding-left: 1.25rem; }
 })();
 </script>
 <script>
-/*!
- * Cassette Deck Lab · Speed Drift Calibrator
- * ---------------------------------------------------------------------------
- * Measures how far a Walkman's playback speed is off by comparing
- *   (a) the DIGITAL MASTER of a track, with
- *   (b) a SHORT Walkman recording of the START of that same track.
- *
- * Because the Walkman capture is short, the drift cannot be measured against
- * the whole master. Instead two 5 s chunks are taken from the Walkman capture
- * (one near its beginning, one near its end) and each one is located inside the
- * digital master by cross-correlation. Then:
- *
- *   Walkman elapsed samples = distance between the two chunks in the capture
- *   Digital elapsed samples = distance between the two matches in the master
- *
- *   Speed Offset % = ((Digital Elapsed / Walkman Elapsed) - 1) * 100
- *
- * Positive offset  -> the Walkman plays FAST (the capture is shorter than the master).
- * Negative offset  -> the Walkman plays SLOW.
- *
- * Pipeline (all heavy work runs in an inline-blob Web Worker):
- *   1. Main thread: decodeAudioData() both files at one shared sample rate.
- *   2. Worker: mono mixdown + light pre-emphasis.
- *   3. Worker: pick the most energetic 5 s chunk near the start and near the end
- *      of the Walkman capture.
- *   4. Worker, COARSE: normalized cross-correlation of 200 Hz loudness envelopes
- *      (robust to speed error and tape EQ) -> approximate position in the master.
- *   5. Worker, FINE: the Walkman chunk is time-compensated by the current speed
- *      estimate, then correlated at full rate in a narrow window with
- *      sub-sample (parabolic) peak interpolation. Repeated to converge.
- *
- * Public API:  window.CassetteSpeedLab = { CONFIG, analyzeFiles, computeTargetHz }
- * Markup:      see the "sd*" element ids used in init() below.
- * ---------------------------------------------------------------------------
- */
 (() => {
   'use strict';
 
-  /* ===================================================================== *
-   *  CONFIGURATION
-   * ===================================================================== */
   const CONFIG = {
-    // --- analysis ---------------------------------------------------------
-    analysisSampleRate: 22050,  // Both files are decoded/resampled to this rate (saves memory + time).
-    chunkSec: 5,                // Length of each correlation chunk.
-    startRegionSec: 45,         // Start chunk is picked from the first N s of the Walkman capture...
-    endRegionSec: 45,           // ...and the end chunk from the last N s.
-    maxOffsetSec: 30,           // Max music offset between files (late record press, lead-in, etc.).
-    maxSpeedErrorPct: 10,       // Search window: |speed error| above this is treated as a failed match.
-    envRateHz: 200,             // Envelope rate for the coarse stage.
-    coarseSpeedStepPct: 1.5,    // Coarse stage tries speed hypotheses on this grid across +/-maxSpeedErrorPct.
-    fineSearchRadiusSec: 0.35,  // +/- search radius around the coarse hit in the fine stage.
-    refinePasses: 3,            // Fine-stage iterations (each re-stretches the template).
-    preEmphasis: 0.95,          // First-order high-pass; sharpens correlation peaks.
-    minWalkmanSec: 15,          // Reject captures shorter than this.
-    minSpanSec: 8,              // Reject if the two chunks are closer than this.
-    warnSpanSec: 20,            // Warn (do not reject) below this span.
-    minNCC: 0.015,              // Sanity floor for the fine-stage correlation (wow/flutter keeps real values low).
-    minFineRatio: 2.0,          // Fine peak must beat its runner-up by this factor.
-    minPeakRatio: 1.5,          // Coarse peak must beat its runner-up by this factor.
+    analysisSampleRate: 22050,
+    chunkSec: 5,
+    startRegionSec: 45,
+    endRegionSec: 45,
+    maxOffsetSec: 30,
+    maxSpeedErrorPct: 10,
+    envRateHz: 200,
+    coarseSpeedStepPct: 1.5,
+    fineSearchRadiusSec: 0.35,
+    refinePasses: 3,
+    preEmphasis: 0.95,
+    minWalkmanSec: 15,
+    minSpanSec: 8,
+    warnSpanSec: 20,
+    minNCC: 0.015,
+    minFineRatio: 2.0,
+    minPeakRatio: 1.5,
 
-    // --- target frequency -------------------------------------------------
-    // 'divide'   : target = baseline / (1 + offset)   <- physically consistent, see computeTargetHz()
-    // 'multiply' : target = baseline * (1 + offset)   <- literal "add the offset" behaviour
     applyMode: 'divide',
-    maxTargetShiftPct: 30,      // Refuse to apply a shift larger than this.
+    maxTargetShiftPct: 30,
 
-    // --- host-page integration -------------------------------------------
-    hostTargetInputId: 'effHz',      // Optional existing numeric input that receives the new target (null to disable).
-    hostReferenceInputId: 'reference' // Optional input used to pre-fill the baseline (null to disable).
+    hostTargetInputId: 'effHz',
+    hostReferenceInputId: 'reference'
   };
 
-  /* ===================================================================== *
-   *  WORKER SOURCE
-   *  workerMain() is serialised with Function.prototype.toString() and run
-   *  from a Blob URL, so it MUST NOT reference anything outside itself.
-   * ===================================================================== */
   /* WORKER_BEGIN */
   function workerMain() {
     'use strict';
 
     const progress = (stage, pct) => self.postMessage({ type: 'progress', stage, pct });
 
-    /* ---------- FFT (iterative radix-2, in place, Float64) ---------- */
     function nextPow2(n) { let p = 1; while (p < n) p <<= 1; return p; }
 
     function fft(re, im, inverse) {
       const n = re.length;
-      for (let i = 1, j = 0; i < n; i++) {           // bit-reversal permutation
+      for (let i = 1, j = 0; i < n; i++) {
         let bit = n >> 1;
         for (; j & bit; bit >>= 1) j ^= bit;
         j ^= bit;
@@ -931,7 +882,7 @@ ul { padding-left: 1.25rem; }
           t = im[i]; im[i] = im[j]; im[j] = t;
         }
       }
-      for (let len = 2; len <= n; len <<= 1) {       // butterflies
+      for (let len = 2; len <= n; len <<= 1) {
         const half = len >> 1;
         const ang = (inverse ? 2 : -2) * Math.PI / len;
         const wlr = Math.cos(ang), wli = Math.sin(ang);
@@ -951,11 +902,6 @@ ul { padding-left: 1.25rem; }
       if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
     }
 
-    /**
-     * Normalized cross-correlation of template t against every lag of search s.
-     * out[k] = sum_i s[k+i]*t[i] / (|s[k..k+n)| * |t|),  k = 0 .. s.length - t.length
-     * Computed with FFTs: O(N log N) instead of O(m*n).
-     */
     function xcorrNCC(s, t) {
       const m = s.length, n = t.length;
       if (m < n) throw new Error('Search window is shorter than the template.');
@@ -964,7 +910,7 @@ ul { padding-left: 1.25rem; }
       const br = new Float64Array(N), bi = new Float64Array(N);
       ar.set(s); br.set(t);
       fft(ar, ai, false); fft(br, bi, false);
-      for (let i = 0; i < N; i++) {                  // A * conj(B)
+      for (let i = 0; i < N; i++) {
         const r = ar[i] * br[i] + ai[i] * bi[i];
         const q = ai[i] * br[i] - ar[i] * bi[i];
         ar[i] = r; ai[i] = q;
@@ -974,7 +920,7 @@ ul { padding-left: 1.25rem; }
       let tEnergy = 0;
       for (let i = 0; i < n; i++) tEnergy += t[i] * t[i];
       const tNorm = Math.sqrt(tEnergy);
-      const pre = new Float64Array(m + 1);           // running energy of s
+      const pre = new Float64Array(m + 1);
       for (let i = 0; i < m; i++) pre[i + 1] = pre[i] + s[i] * s[i];
 
       const out = new Float64Array(m - n + 1);
@@ -985,7 +931,6 @@ ul { padding-left: 1.25rem; }
       return out;
     }
 
-    /** Highest peak, runner-up outside +/-exclusion, and sub-sample position. */
     function findPeak(ncc, exclusion) {
       let bi = 0, bv = -Infinity;
       for (let k = 0; k < ncc.length; k++) if (ncc[k] > bv) { bv = ncc[k]; bi = k; }
@@ -1003,7 +948,6 @@ ul { padding-left: 1.25rem; }
       return { pos: bi + frac, value: bv, ratio };
     }
 
-    /* ---------- signal helpers ---------- */
     function mixMono(channels, len) {
       const out = new Float32Array(len);
       for (let c = 0; c < channels.length; c++) {
@@ -1014,11 +958,10 @@ ul { padding-left: 1.25rem; }
       return out;
     }
 
-    function preEmphasize(x, a) {                     // y[i] = x[i] - a*x[i-1], in place
+    function preEmphasize(x, a) {
       for (let i = x.length - 1; i > 0; i--) x[i] -= a * x[i - 1];
     }
 
-    /** Start index (within [from,to)) of the most energetic window of n samples. */
     function pickChunk(x, from, to, n) {
       const len = to - from;
       if (len < n) throw new Error('Audio is too short to extract a correlation chunk.');
@@ -1034,7 +977,6 @@ ul { padding-left: 1.25rem; }
       return from + best;
     }
 
-    /** 4th-root-compressed block-RMS envelope, high-passed by a +/-1 s moving mean. */
     function envelope(x, B, hpBlocks) {
       const nb = Math.floor(x.length / B);
       const e = new Float64Array(nb);
@@ -1054,13 +996,6 @@ ul { padding-left: 1.25rem; }
       return out;
     }
 
-    /**
-     * COARSE stage. Correlate the Walkman chunk's envelope against a region of the
-     * digital envelope under several speed hypotheses (the chunk is stretched by
-     * each candidate r first). A 5 s chunk of a 3 % fast tape is ~150 ms out of step
-     * at its ends, which is enough to wreck a single un-stretched correlation.
-     * Returns the best { pos, r, value, ratio } where pos is in region blocks.
-     */
     function coarseMulti(wEnv, wb, nb, region, tolPct, stepPct, excl) {
       let best = null;
       const steps = Math.max(1, Math.ceil(tolPct / stepPct));
@@ -1080,19 +1015,6 @@ ul { padding-left: 1.25rem; }
       return best;
     }
 
-    /**
-     * FINE stage. Locate the Walkman chunk (starting at sample wStart, n samples
-     * long) inside the digital master `dx`.
-     *
-     * Time model: Walkman sample w corresponds to digital sample  d = w * r,
-     * where r = digitalElapsed / walkmanElapsed. The Walkman chunk is therefore
-     * resampled onto the digital timeline (tmpl[j] = walkman(wStart + j / r))
-     * so that, once r is right, it matches the master sample-for-sample.
-     *
-     * Returns the digital-timeline position of the chunk CENTRE. Centres are used
-     * as anchors because a residual speed error stretches a chunk symmetrically
-     * about its middle.
-     */
     function fineAnchor(wx, dx, wStart, n, r, dCenterGuess, radius) {
       const nOut = Math.floor((n - 2) * r);
       const tmpl = new Float64Array(nOut);
@@ -1115,13 +1037,12 @@ ul { padding-left: 1.25rem; }
       return { anchor: from + pk.pos + (n / 2) * r, ncc: pk.value, ratio: pk.ratio };
     }
 
-    /* ---------- main analysis ---------- */
     function analyze(msg) {
       const sr = msg.sampleRate, C = msg.config;
       const n = Math.round(C.chunkSec * sr);
       const tol = C.maxSpeedErrorPct / 100;
       const B = Math.max(1, Math.round(sr / C.envRateHz));
-      const hp = Math.round(C.envRateHz);             // +/- 1 s
+      const hp = Math.round(C.envRateHz);
       const warnings = [];
 
       const wLen = msg.walkman[0].length;
@@ -1132,7 +1053,6 @@ ul { padding-left: 1.25rem; }
       }
       if (dLenAll < 3 * n) throw new Error('The digital master is too short.');
 
-      // Only the opening part of the master can contain the Walkman capture.
       const dLen = Math.min(dLenAll,
         Math.ceil(wLen / (1 - tol)) + Math.round(C.maxOffsetSec * sr) + 2 * n);
 
@@ -1143,13 +1063,12 @@ ul { padding-left: 1.25rem; }
       preEmphasize(wx, C.preEmphasis);
       preEmphasize(dx, C.preEmphasis);
 
-      // --- 1. choose the two Walkman chunks (block aligned) ---------------
       progress('Choosing chunks', 8);
       const startEnd = Math.min(Math.round(C.startRegionSec * sr), Math.floor(wLen * 0.4));
       const endBeg = Math.max(wLen - Math.round(C.endRegionSec * sr), Math.ceil(wLen * 0.6));
       const ws = Math.floor(pickChunk(wx, 0, startEnd, n) / B) * B;
       const we = Math.floor(pickChunk(wx, endBeg, wLen, n) / B) * B;
-      const W = we - ws;                               // Walkman elapsed samples (exact)
+      const W = we - ws;
       if (W < C.minSpanSec * sr) {
         throw new Error('The two chunks are only ' + (W / sr).toFixed(1) +
           ' s apart. Use a longer Walkman recording.');
@@ -1158,18 +1077,17 @@ ul { padding-left: 1.25rem; }
         warnings.push('Short span (' + (W / sr).toFixed(1) + ' s): wow/flutter can dominate. A recording of 30 s or more is better.');
       }
 
-      // --- 2. COARSE: envelope correlation --------------------------------
       progress('Building envelopes', 14);
       const wEnv = envelope(wx, B, hp);
       const dEnv = envelope(dx, B, hp);
       const nb = Math.floor(n / B);
-      const excl = Math.round(C.envRateHz);            // ignore runner-ups within 1 s
+      const excl = Math.round(C.envRateHz);
 
       progress('Coarse alignment (start)', 24);
       const tolPct = C.maxSpeedErrorPct;
       const s1To = Math.min(dEnv.length, Math.ceil((ws * (1 + tol) + C.maxOffsetSec * sr + n) / B));
       const c1 = coarseMulti(wEnv, ws / B, nb, dEnv.subarray(0, s1To), tolPct, C.coarseSpeedStepPct, excl);
-      const d1 = c1.pos * B + (n / 2) * c1.r;          // digital centre of the start chunk
+      const d1 = c1.pos * B + (n / 2) * c1.r;
 
       progress('Coarse alignment (end)', 40);
       const e0 = Math.max(0, Math.floor((c1.pos * B + W * (1 - tol) - sr) / B));
@@ -1178,10 +1096,9 @@ ul { padding-left: 1.25rem; }
       const c2 = coarseMulti(wEnv, we / B, nb, dEnv.subarray(e0, e1), tolPct, C.coarseSpeedStepPct, excl);
       const d2 = (e0 + c2.pos) * B + (n / 2) * c2.r;
 
-      let r = (d2 - d1) / W;                           // first speed estimate
+      let r = (d2 - d1) / W;
       if (!isFinite(r) || r <= 0) r = 1;
 
-      // --- 3. FINE: stretch-compensated full-rate correlation -------------
       const radius = Math.round(C.fineSearchRadiusSec * sr);
       let a1 = { anchor: d1, ncc: 0, ratio: 0 }, a2 = { anchor: d2, ncc: 0, ratio: 0 };
       for (let p = 0; p < C.refinePasses; p++) {
@@ -1191,11 +1108,9 @@ ul { padding-left: 1.25rem; }
         r = (a2.anchor - a1.anchor) / W;
       }
 
-      // --- 4. speed offset -------------------------------------------------
-      const D = a2.anchor - a1.anchor;                 // Digital elapsed samples
-      const offsetPct = (D / W - 1) * 100;             // <- the specified formula
+      const D = a2.anchor - a1.anchor;
+      const offsetPct = (D / W - 1) * 100;
 
-      // --- 5. confidence ---------------------------------------------------
       const minNcc = Math.min(a1.ncc, a2.ncc);
       const minFine = Math.min(a1.ratio, a2.ratio);
       const minRatio = Math.min(c1.ratio, c2.ratio);
@@ -1220,7 +1135,7 @@ ul { padding-left: 1.25rem; }
         digitalElapsedSamples: D,
         walkmanElapsedSamples: W,
         spanSec: W / sr,
-        resolutionPct: 100 / W,                        // effect of a 1-sample timing error
+        resolutionPct: 100 / W,
         start: { walkmanSample: ws + n / 2, digitalSample: a1.anchor, ncc: a1.ncc, fineRatio: a1.ratio, ratio: c1.ratio },
         end:   { walkmanSample: we + n / 2, digitalSample: a2.anchor, ncc: a2.ncc, fineRatio: a2.ratio, ratio: c2.ratio }
       };
@@ -1236,10 +1151,7 @@ ul { padding-left: 1.25rem; }
   }
   /* WORKER_END */
 
-  /* ===================================================================== *
-   *  MAIN THREAD: decoding + worker plumbing
-   * ===================================================================== */
-  let active = null;                                   // { worker, url, reject }
+  let active = null;
 
   function cancelActive() {
     if (!active) return;
@@ -1254,10 +1166,9 @@ ul { padding-left: 1.25rem; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) throw new Error('This browser has no Web Audio API.');
     try { return new AC({ sampleRate: CONFIG.analysisSampleRate }); }
-    catch (_) { return new AC(); }                     // older browsers: keep their native rate
+    catch (_) { return new AC(); }
   }
 
-  /** decodeAudioData() in callback form, so it also works on older Safari. */
   function decode(file, ctx) {
     return file.arrayBuffer().then((ab) => new Promise((resolve, reject) => {
       const p = ctx.decodeAudioData(ab, resolve, reject);
@@ -1267,20 +1178,12 @@ ul { padding-left: 1.25rem; }
     });
   }
 
-  /** Copy up to 2 channels out of an AudioBuffer (copies can be transferred to the worker). */
   function extractChannels(buf) {
     const out = [];
     for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) out.push(buf.getChannelData(c).slice());
     return out;
   }
 
-  /**
-   * Decode both files and run the analysis in a Web Worker.
-   * @param {File} digitalFile  the digital master
-   * @param {File} walkmanFile  the (short) Walkman recording of the same track
-   * @param {(stage:string, pct:number)=>void} [onProgress]
-   * @returns {Promise<object>} analysis result (see worker `analyze()` return value)
-   */
   async function analyzeFiles(digitalFile, walkmanFile, onProgress) {
     cancelActive();
     const ctx = createAudioContext();
@@ -1291,7 +1194,7 @@ ul { padding-left: 1.25rem; }
       msg = {
         digital: extractChannels(dBuf),
         walkman: extractChannels(wBuf),
-        sampleRate: ctx.sampleRate,                    // identical for both buffers
+        sampleRate: ctx.sampleRate,
         config: CONFIG
       };
     } finally {
@@ -1312,33 +1215,15 @@ ul { padding-left: 1.25rem; }
       };
       worker.onerror = (e) => { done(); reject(new Error(e.message || 'The analysis worker crashed.')); };
       const transfer = msg.digital.concat(msg.walkman).map((a) => a.buffer);
-      worker.postMessage(msg, transfer);               // zero-copy hand-off
+      worker.postMessage(msg, transfer);
     });
   }
 
-  /* ===================================================================== *
-   *  TARGET FREQUENCY
-   * ===================================================================== */
-  /**
-   * New tone target for the live meter.
-   *
-   * Why 'divide' is the default: the Walkman reads `baselineHz` on the tone tape
-   * while the music proves it is running `offsetPct` fast. At the CORRECT speed
-   * the same tape therefore reads baselineHz / (1 + offset). Trimming towards
-   * baselineHz * (1 + offset) would push the motor further from true speed.
-   *
-   *   +2.81 %  with a 3000 Hz baseline:
-   *     'divide'   -> 3000 / 1.0281 = 2918.00 Hz   (slow the motor down until the tone reads this)
-   *     'multiply' -> 3000 * 1.0281 = 3084.30 Hz   (literal "add 2.81 %")
-   */
   function computeTargetHz(baselineHz, offsetPct, mode) {
     const k = 1 + offsetPct / 100;
     return (mode || CONFIG.applyMode) === 'multiply' ? baselineHz * k : baselineHz / k;
   }
 
-  /* ===================================================================== *
-   *  UI CONTROLLER
-   * ===================================================================== */
   const $ = (id) => document.getElementById(id);
   const ROLES = ['digital', 'walkman'];
   const state = { digital: null, walkman: null, result: null, pickRole: null, run: 0 };
@@ -1368,6 +1253,7 @@ ul { padding-left: 1.25rem; }
     $('sdFormula').textContent = '—';
     $('sdWarnings').textContent = '';
     $('sdApply').disabled = true;
+    $('sdBypass').disabled = true;
   }
 
   function assign(files, preferred) {
@@ -1433,12 +1319,13 @@ ul { padding-left: 1.25rem; }
     const ul = $('sdWarnings');
     ul.textContent = '';
     r.warnings.forEach((w) => { const li = document.createElement('li'); li.textContent = w; ul.appendChild(li); });
+    
+    $('sdBypass').disabled = false;
     updatePreview();
     setStatus(r.ok ? 'Speed offset measured. Review it, then apply it to the target tone.'
-                   : 'Measurement is not reliable enough to apply. See the notes below.', r.ok ? 'good' : 'warn');
+                   : 'Measurement is not reliable enough to apply. See the notes below or use Override.', r.ok ? 'good' : 'warn');
   }
 
-  /** Live preview of the target formula; also gates the Apply button. */
   function updatePreview() {
     const r = state.result, base = currentBaseline();
     if (!r || !(base > 0)) { $('sdApply').disabled = true; return; }
@@ -1449,32 +1336,15 @@ ul { padding-left: 1.25rem; }
     $('sdApply').disabled = !r.ok;
   }
 
-  /**
-   * Push the shifted target into numeric inputs.
-   *
-   * Worked example (+2.81 % drift, 3000 Hz baseline):
-   *   'multiply' mode:  3000 * 1.0281 = 3084.30 Hz   -> input.value = "3084.30"
-   *   'divide'   mode:  3000 / 1.0281 = 2918.00 Hz   -> input.value = "2918.00"
-   * Either way the string is written with toFixed(2) and the input is then told
-   * about it with a real DOM event so the host page's listeners react.
-   */
   function injectTargetHz(hz) {
     const text = hz.toFixed(2);
-
-    // 1) This panel's own read-only target box.
     $('sdTargetHz').value = text;
-
-    // 2) Optional: the host page's numeric input (the live meter's "Effective reference").
-    //    Setting .value never fires events, so dispatch them to trigger the host's handlers
-    //    (in the Wow & Flutter tester, 'change' on #effHz re-centres the frequency/speed meters).
     const host = CONFIG.hostTargetInputId && $(CONFIG.hostTargetInputId);
     if (host) {
       host.value = text;
       host.dispatchEvent(new Event('input', { bubbles: true }));
       host.dispatchEvent(new Event('change', { bubbles: true }));
     }
-
-    // 3) Optional: let any other module listen.
     document.dispatchEvent(new CustomEvent('cassette:target-applied', {
       detail: { hz, offsetPct: state.result ? state.result.offsetPct : null }
     }));
@@ -1482,9 +1352,9 @@ ul { padding-left: 1.25rem; }
 
   function applyOffset() {
     const r = state.result, base = currentBaseline();
-    if (!r || !r.ok) return;
+    if (!r) return;
     if (!(base > 0)) { setStatus('Enter the baseline tone reading first.', 'warn'); return; }
-    const target = computeTargetHz(base, r.offsetPct);       // always from the baseline, so re-clicking never compounds
+    const target = computeTargetHz(base, r.offsetPct);
     if (Math.abs((target / base - 1) * 100) > CONFIG.maxTargetShiftPct) {
       setStatus('That shift is larger than ' + CONFIG.maxTargetShiftPct + '%. Not applied.', 'warn'); return;
     }
@@ -1500,7 +1370,6 @@ ul { padding-left: 1.25rem; }
     if (host && Number(host.value) > 0) $('sdBaselineHz').value = Number(host.value);
     $('sdTargetHz').value = Number($('sdBaselineHz').value || 0).toFixed(2);
 
-    // Slots: click / keyboard opens the file picker for that slot.
     const input = $('sdFileInput');
     document.querySelectorAll('.sd-slot').forEach((slot) => {
       const open = () => { state.pickRole = slot.dataset.role; input.value = ''; input.click(); };
@@ -1509,13 +1378,11 @@ ul { padding-left: 1.25rem; }
     });
     input.addEventListener('change', () => { assign(Array.from(input.files), state.pickRole); });
 
-    // Drag and drop anywhere on the page. Dropping on a slot targets that slot;
-    // dropping elsewhere fills the empty slots in order (digital first).
     const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') !== -1;
     let depth = 0;
     window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; drop.classList.add('is-over'); } });
     window.addEventListener('dragleave', (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; drop.classList.remove('is-over'); } });
-    window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });   // allow drop, stop the browser opening the file
+    window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
     window.addEventListener('drop', (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault(); depth = 0; drop.classList.remove('is-over');
@@ -1526,6 +1393,12 @@ ul { padding-left: 1.25rem; }
     $('sdSwap').addEventListener('click', () => {
       const t = state.digital; state.digital = state.walkman; state.walkman = t;
       refreshSlots(); maybeRun();
+    });
+    $('sdBypass').addEventListener('click', () => {
+      if (state.result) {
+        $('sdApply').disabled = false;
+        setStatus('Override active: Apply button unlocked for target tone injection.', 'good');
+      }
     });
     $('sdBaselineHz').addEventListener('input', updatePreview);
     $('sdApply').addEventListener('click', applyOffset);
@@ -1538,7 +1411,6 @@ ul { padding-left: 1.25rem; }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
-
 </script>
 </body>
 </html>
