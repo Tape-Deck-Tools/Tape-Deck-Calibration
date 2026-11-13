@@ -145,6 +145,51 @@ ul { padding-left: 1.25rem; }
 .sd-progress { display: block; width: 100%; height: 6px; margin-top: 12px; accent-color: var(--accent); }
 #sdWarnings { margin: 10px 0 0; color: var(--warn); font-size: .86rem; }
 #sdWarnings:empty { display: none; }
+
+/* ---- Cassette bias calibration ---- */
+.panel.collapsible > summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 1.06rem; font-weight: 700; letter-spacing: -.015em; border-radius: 10px; }
+.panel.collapsible > summary::-webkit-details-marker { display: none; }
+.panel.collapsible > summary::before { content: ""; width: 4px; height: 18px; flex: 0 0 4px; border-radius: 5px; background: var(--accent); }
+.panel.collapsible > summary::after { content: ""; margin-left: auto; width: 9px; height: 9px; flex: 0 0 9px; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(45deg) translate(-2px, -2px); transition: transform .2s ease; }
+.panel.collapsible[open] > summary { margin-bottom: 15px; }
+.panel.collapsible[open] > summary::after { transform: rotate(225deg) translate(-2px, -2px); }
+.panel.collapsible > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.bias-note { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; margin: 14px 0 0; border: 1px solid rgba(255,203,118,.28); border-radius: 12px; background: rgba(255,203,118,.06); color: #e9d6ad; font-size: .88rem; }
+.bias-note input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 18px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); cursor: pointer; }
+.bias-note label { cursor: pointer; }
+.bias-note b { color: var(--warn); }
+.bias-steps { list-style: none; counter-reset: bstep; margin: 0; padding: 0; display: grid; gap: 10px; }
+.bias-steps li { counter-increment: bstep; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; font-size: .9rem; }
+.bias-steps li::before { content: counter(bstep); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #1b2938; border: 1px solid #304255; color: var(--accent); font-weight: 750; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.bias-steps li b { color: var(--text); }
+.bias-gauge { position: relative; height: 12px; margin: 14px 4px 6px; border-radius: 999px; background: linear-gradient(90deg, var(--record) 0%, var(--warn) 22%, var(--accent-strong) 40%, var(--accent-strong) 60%, var(--warn) 78%, var(--record) 100%); opacity: .85; }
+.bias-gauge::after { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; background: rgba(237,245,248,.55); transform: translateX(-1px); }
+.bias-mark { position: absolute; top: -6px; width: 6px; height: 24px; left: 50%; border-radius: 3px; background: var(--text); box-shadow: 0 0 0 2px #0b1016, 0 0 10px rgba(237,245,248,.5); transform: translateX(-3px); transition: left .18s ease, opacity .18s ease; opacity: .25; z-index: 1; }
+.bias-mark.live { opacity: 1; }
+.bias-scale { display: flex; justify-content: space-between; margin: 0 4px; font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bias-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px; margin-top: 14px; }
+.bias-verdict { margin-top: 8px; font-size: .86rem; color: var(--muted); min-height: 2.6em; }
+.bias-verdict.good { color: var(--accent); }
+.bias-verdict.warn { color: var(--warn); }
+.bias-verdict.bad { color: var(--record); }
+.bias-sub { margin: 18px 0 0; }
+.bias-two .meter canvas { margin-top: 10px; }
+.bias-two .meter:hover { transform: none; }
+@media (max-width: 600px) { .bias-note { flex-direction: row; } }
+@media (prefers-reduced-motion: reduce) { .panel.collapsible > summary::after, .bias-mark { transition: none !important; } }
+
+#recPanel > summary::before { background: var(--record); }
+#recPanel > summary::after { border-color: var(--record); }
+/* ---- Meter tabs ---- */
+.mtabs { display: flex; gap: 4px; margin-top: 18px; padding: 0 2px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.mtab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; margin: 0; position: relative; top: 1px; background: #0c141d; color: var(--muted); border: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 11px 11px 0 0; box-shadow: none; font-weight: 700; white-space: nowrap; }
+.mtab:hover:not(:disabled) { transform: none; filter: none; color: var(--text); background: #111b26; border-color: var(--line-bright); }
+.mtab[aria-selected="true"] { background: #0e1822; color: var(--text); border-color: var(--line); border-bottom-color: #0e1822; box-shadow: inset 0 2px 0 var(--accent); }
+.mtab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.mpane { padding: 16px; background: #0e1822; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 14px 14px; }
+.mpane > .small { margin: 0 0 14px; }
+.mpane .meters { margin-top: 0; }
+@media (max-width: 600px) { .mpane { padding: 12px; } .mtab { padding: 9px 14px; } }
 </style>
 </head>
 <body>
@@ -182,8 +227,8 @@ ul { padding-left: 1.25rem; }
     </div>
   </div>
 
-  <div class="panel" style="border-color: var(--record);">
-    <h2 style="color: var(--record);">Record Mode Drag Correction</h2>
+  <details class="panel collapsible" name="opt-tools" id="recPanel" style="border-color: var(--record);">
+    <summary style="color: var(--record);">Record Mode Drag Correction</summary>
     <p class="small muted">Enter your test tone playback frequency below. Enabling correction shifts the speed meter target to match your recorded error directly.</p>
     
     <div class="grid">
@@ -203,10 +248,10 @@ ul { padding-left: 1.25rem; }
       <span class="pill" id="recPill">Correction: OFF</span>
     </div>
     <div id="recStatus" class="status">Correction is currently OFF.</div>
-  </div>
+  </details>
 
-  <div class="panel">
-    <h2>Calibrate this page to your tape (optional)</h2>
+  <details class="panel collapsible" name="opt-tools" id="calPanel">
+    <summary>Calibrate this page to your tape (optional)</summary>
     <p class="small muted">If your reference tape is not exactly on spec, let a trusted source tell this page what the tape's tone really is using the button below.</p>
     <div class="grid">
       <label class="field">Trim <span id="trimRead">+6.270%</span><input id="trim" type="range" min="-30" max="30" step="0.001" value="6.27"></label>
@@ -218,10 +263,10 @@ ul { padding-left: 1.25rem; }
       <button id="zeroTrim" class="secondary">Reset trim</button>
     </div>
     <div id="calMsg" class="status">Loaded saved calibration.</div>
-  </div>
+  </details>
 
-  <div class="panel" id="sdPanel">
-    <h2>Measure speed drift with music</h2>
+  <details class="panel collapsible" name="opt-tools" id="sdPanel">
+    <summary>Measure speed drift with music</summary>
     <p class="small muted">Drop the digital master of a track and a short Walkman recording of the start of that same track. The page compares how long the same stretch of music lasts in each file and reports the Walkman's speed error. Apply it to turn your 3000&nbsp;Hz tone target into the true target for the motor trim pot.</p>
 
     <div class="grid">
@@ -269,7 +314,7 @@ ul { padding-left: 1.25rem; }
       <button id="sdBypass" class="secondary" type="button" disabled style="color: var(--warn); border-color: rgba(255,203,118,.35);">Override &amp; Enable Apply</button>
       <button id="sdSwap" class="secondary" type="button" disabled>Swap files</button>
     </div>
-  </div>
+  </details>
 
   <div class="panel">
     <h2>2. Record and analyze</h2>
@@ -291,15 +336,42 @@ ul { padding-left: 1.25rem; }
           <option value="ultra">Ultra-fine adjustment</option>
         </select>
       </label>
+      <label class="field">Meter style
+        <select id="meterStyle">
+          <option value="analog" selected>Analog VU (needle)</option>
+          <option value="digital">Digital VU (dot-matrix LED)</option>
+        </select>
+      </label>
+      <label class="field">0 VU reference (dBFS)
+        <input id="vuRef" type="number" min="-60" max="0" step="0.5" value="-18">
+      </label>
+      <button id="vuSetRef" class="secondary" type="button" style="align-self:flex-end" title="Play your reference tone first, then press this to make its level read 0 VU">Set 0 VU to current level</button>
     </div>
-    <div class="meters">
-      <figure class="meter"><canvas id="m_level_l" width="480" height="300"></canvas><figcaption><span class="rd" id="r_level_l">—</span> <span class="unit">dB</span><div class="small muted" id="lbl_l">Left Channel Level</div></figcaption></figure>
-      <figure class="meter"><canvas id="m_level_r" width="480" height="300"></canvas><figcaption><span class="rd" id="r_level_r">—</span> <span class="unit">dB</span><div class="small muted" id="lbl_r">Right Channel Level</div></figcaption></figure>
-      <figure class="meter"><canvas id="m_bal" width="480" height="300"></canvas><figcaption><span class="rd" id="r_bal">—</span> <span class="unit">dB</span><div class="small muted" id="balHint">L/R Level Balance</div></figcaption></figure>
-      <figure class="meter"><canvas id="m_freq" width="480" height="300"></canvas><figcaption><span class="rd" id="r_freq">—</span> <span class="unit">Hz</span><div class="small muted" id="freqRange">Waiting for signal</div></figcaption></figure>
-      <figure class="meter"><canvas id="m_speed" width="480" height="300"></canvas><figcaption><span class="rd" id="r_speed">—</span> <span class="unit">%</span><div class="small muted" id="speedAvg">Waiting for signal</div></figcaption></figure>
-      <figure class="meter"><canvas id="m_wf" width="480" height="300"></canvas><figcaption><span class="rd" id="r_wf">—</span> <span class="unit">% RMS</span><div class="small muted">Frequency variation around recent average</div></figcaption></figure>
-      <figure class="meter"><canvas id="m_dev" width="480" height="300"></canvas><figcaption><span class="rd" id="r_dev">—</span> <span class="unit">Hz RMS</span><div class="small muted">Same variation, in Hz</div></figcaption></figure>
+    <div class="mtabs" role="tablist" aria-label="Meter groups">
+      <button type="button" class="mtab" role="tab" id="mtab_levels" aria-controls="mpane_levels" aria-selected="true">Levels</button>
+      <button type="button" class="mtab" role="tab" id="mtab_speed" aria-controls="mpane_speed" aria-selected="false" tabindex="-1">Speed</button>
+      <button type="button" class="mtab" role="tab" id="mtab_wf" aria-controls="mpane_wf" aria-selected="false" tabindex="-1">Wow &amp; Flutter</button>
+    </div>
+    <div class="mpane" role="tabpanel" id="mpane_levels" aria-labelledby="mtab_levels">
+      <p class="small muted">Left and right input level in VU. Play your reference tone and press &ldquo;Set 0 VU to current level&rdquo;, then read changes in dB above or below it. The analog scale runs to +5 and the digital one to +9.</p>
+      <div class="meters">
+        <figure class="meter"><canvas id="m_level_l" width="480" height="300"></canvas><figcaption><span class="rd" id="r_level_l">—</span> <span class="unit">VU</span><div class="small muted" id="lbl_l">Left Channel Level</div></figcaption></figure>
+        <figure class="meter"><canvas id="m_level_r" width="480" height="300"></canvas><figcaption><span class="rd" id="r_level_r">—</span> <span class="unit">VU</span><div class="small muted" id="lbl_r">Right Channel Level</div></figcaption></figure>
+      </div>
+    </div>
+    <div class="mpane" role="tabpanel" id="mpane_speed" aria-labelledby="mtab_speed" hidden>
+      <p class="small muted">The detected tone frequency and how far playback speed is from your reference.</p>
+      <div class="meters">
+        <figure class="meter"><canvas id="m_freq" width="480" height="300"></canvas><figcaption><span class="rd" id="r_freq">—</span> <span class="unit">Hz</span><div class="small muted" id="freqRange">Waiting for signal</div></figcaption></figure>
+        <figure class="meter"><canvas id="m_speed" width="480" height="300"></canvas><figcaption><span class="rd" id="r_speed">—</span> <span class="unit">%</span><div class="small muted" id="speedAvg">Waiting for signal</div></figcaption></figure>
+      </div>
+    </div>
+    <div class="mpane" role="tabpanel" id="mpane_wf" aria-labelledby="mtab_wf" hidden>
+      <p class="small muted">How much the pitch wanders around its recent average, as a percentage and in Hz.</p>
+      <div class="meters">
+        <figure class="meter"><canvas id="m_wf" width="480" height="300"></canvas><figcaption><span class="rd" id="r_wf">—</span> <span class="unit">% RMS</span><div class="small muted">Frequency variation around recent average</div></figcaption></figure>
+        <figure class="meter"><canvas id="m_dev" width="480" height="300"></canvas><figcaption><span class="rd" id="r_dev">—</span> <span class="unit">Hz RMS</span><div class="small muted">Same variation, in Hz</div></figcaption></figure>
+      </div>
     </div>
   </div>
 
@@ -312,6 +384,105 @@ ul { padding-left: 1.25rem; }
     </div>
     <p class="small muted" style="margin-top:8px">The copied setting uses the average L/R imbalance over your selected analysis window. It applies half the correction to each channel, preserving the overall average level.</p>
   </div>
+
+  <details class="panel collapsible" id="biasPanel">
+    <summary>Cassette Bias Calibration</summary>
+    <p class="small muted">For 2-head and 3-head decks that have internal bias trim pots, or an external bias control. Record a low tone and a 10&nbsp;kHz tone onto a blank tape, play it back, and compare their levels. Too much bias rolls off the highs. Too little makes them bright and distorted.</p>
+
+    <div class="grid">
+      <label class="field">Tape type
+        <select id="biasTape">
+          <option value="normal">Normal (Type I Ferric)</option>
+          <option value="chrome">Chrome / CrO2 (Type II High-Position)</option>
+          <option value="metal">Metal (Type IV)</option>
+        </select>
+      </label>
+      <label class="field">Low reference tone
+        <select id="biasLow"><option value="400">400 Hz</option><option value="1000" selected>1 kHz</option></select>
+      </label>
+      <label class="field">High-frequency tone
+        <select id="biasHf"><option value="8000">8 kHz</option><option value="10000" selected>10 kHz</option><option value="12500">12.5 kHz</option></select>
+      </label>
+      <label class="field">Tolerance
+        <select id="biasTol"><option value="0.5">±0.5 dB</option><option value="1" selected>±1 dB</option><option value="2">±2 dB</option></select>
+      </label>
+    </div>
+
+    <div class="bias-note">
+      <input type="checkbox" id="biasPerDeck">
+      <label for="biasPerDeck"><b>Only use this if your deck has independent bias adjustments per tape type;</b> otherwise, keep it on Normal or ignore if there's no noticeable difference. Tick the box if your deck does, so the advice below talks about bias trim pots. Leave it off for a diagnostic-only reading.</label>
+    </div>
+    <p class="small muted" id="biasTapeHint" style="margin:12px 0 0"></p>
+
+    <div class="bias-two">
+      <div class="calc-card" style="margin-top:0">
+        <h3>1. Test tone to record</h3>
+        <p class="small muted">Plays the low and high tones together at equal level. Connect your computer's output to the deck's line in and record it onto a blank tape. Keep the level low, since a loud 10&nbsp;kHz tone saturates the tape and gives false readings.</p>
+        <label class="field">Level per tone <span id="biasToneLevelRead">-20 dBFS</span>
+          <input id="biasToneLevel" type="range" min="-40" max="-6" step="1" value="-20">
+        </label>
+        <div class="controls" style="margin-top:12px">
+          <button id="biasPlay" type="button">Play test tones</button>
+          <button id="biasStopTone" class="secondary" type="button" disabled>Stop tones</button>
+          <span class="pill" id="biasTonePill">Tones off</span>
+        </div>
+      </div>
+      <div class="calc-card" style="margin-top:0">
+        <h3>2. Measure the playback</h3>
+        <p class="small muted">Takes the deck's line out through the audio input chosen in step 1 of the page. It reads the high tone against the low tone on each channel, averaged over about 3&nbsp;seconds.</p>
+        <div class="controls">
+          <button id="biasStart" type="button">Start bias measurement</button>
+          <button id="biasStop" class="secondary" type="button" disabled>Stop</button>
+        </div>
+        <div class="controls" style="margin-top:9px">
+          <button id="biasSetRef" class="secondary" type="button" disabled>Use as source reference</button>
+          <button id="biasClearRef" class="secondary" type="button" disabled>Clear reference</button>
+        </div>
+        <p class="small muted" id="biasRefInfo" style="margin:10px 0 0">No source reference. The high and low tones are assumed to be equal in level on a perfect tape.</p>
+      </div>
+    </div>
+
+    <div id="biasStatus" class="status" role="status" aria-live="polite">Press Start bias measurement, then play back your recorded test tones.</div>
+
+    <div class="bias-two">
+      <div class="meter">
+        <div class="small muted">Left channel · high vs low tone</div>
+        <div><span class="rd" id="biasDevL">—</span> <span class="unit">dB</span></div>
+        <canvas id="m_bias_l" width="480" height="300" aria-label="Left channel bias meter"></canvas>
+        <div class="bias-scale" aria-hidden="true"><span>◀ highs low</span><span>0 = on target</span><span>highs high ▶</span></div>
+        <div class="small muted" id="biasLvlL" style="margin-top:8px">Low — dB · High — dB</div>
+        <div class="bias-verdict" id="biasVerdictL"></div>
+      </div>
+      <div class="meter">
+        <div class="small muted">Right channel · high vs low tone</div>
+        <div><span class="rd" id="biasDevR">—</span> <span class="unit">dB</span></div>
+        <canvas id="m_bias_r" width="480" height="300" aria-label="Right channel bias meter"></canvas>
+        <div class="bias-scale" aria-hidden="true"><span>◀ highs low</span><span>0 = on target</span><span>highs high ▶</span></div>
+        <div class="small muted" id="biasLvlR" style="margin-top:8px">Low — dB · High — dB</div>
+        <div class="bias-verdict" id="biasVerdictR"></div>
+      </div>
+    </div>
+
+    <div class="grid bias-sub">
+      <label class="field">Target high-tone offset (dB)
+        <input id="biasTarget" type="number" step="0.1" min="-6" max="6" value="0">
+      </label>
+    </div>
+    <p class="small muted" style="margin:6px 0 0">0&nbsp;dB means the high tone should come back as loud as the low one. Change it only if your deck's service manual gives a different target.</p>
+
+    <div class="calc-card">
+      <h3>2-head record → playback loop</h3>
+      <ol class="bias-steps">
+        <li><span><b>Prepare.</b> Clean and demagnetise the heads, check azimuth, and switch Dolby NR and any MPX filter off. Load a blank tape of the type selected above.</span></li>
+        <li><span><b>Record the tone pass.</b> Press Play test tones, put the deck into record on the line input, and record about 15–20 seconds. Set the record level so the tones sit well below 0&nbsp;VU.</span></li>
+        <li><span><b>Rewind.</b> Stop recording, then rewind to the start of the tone pass.</span></li>
+        <li><span><b>Playback.</b> Play the tape back through the line out and press Start bias measurement.</span></li>
+        <li><span><b>Compare the 10&nbsp;kHz level against the low tone.</b> A negative reading means the highs are low, so the tape is over-biased. A positive reading means the highs are high, so it is under-biased. Aim for inside your tolerance on both channels.</span></li>
+        <li><span><b>Adjust the internal trim pots.</b> Change the bias trimmer for that channel and tape type by about 1/8 of a turn, and note which way you turned it. Record a fresh section, rewind, play it back and compare again. Repeat until both channels are in tolerance.</span></li>
+      </ol>
+      <p class="small muted" style="margin:12px 0 0">On a 2-head deck you cannot hear the tape while recording, so every adjustment needs a new record, rewind and playback pass. A 3-head deck with tape monitor can read the tones off the tape live while recording, so there you can turn the pot as you watch the gauges. A large high-frequency loss that bias does not fix usually means dirty or misaligned heads.</p>
+    </div>
+  </details>
 
   <div class="panel">
     <h2>Live frequency trace</h2>
@@ -342,14 +513,17 @@ ul { padding-left: 1.25rem; }
 
   const RED='#b83a2e', YEL='#d9a21b', GRN='#3f8f4f';
   const M={
-    level_l:{title:'LEFT LEVEL',unit:'dBFS'},
-    level_r:{title:'RIGHT LEVEL',unit:'dBFS'},
-    bal:{title:'L/R BAL OFFSET',unit:'dB'},
+    level_l:{title:'LEFT LEVEL',unit:'VU',badge:'L'},
+    level_r:{title:'RIGHT LEVEL',unit:'VU',badge:'R'},
     freq:{title:'FREQUENCY',unit:'Hz'},
     speed:{title:'SPEED ERROR',unit:'%'},
     wf:{title:'WOW + FLUTTER',unit:'% RMS'},
-    dev:{title:'VARIATION',unit:'Hz RMS'}
+    dev:{title:'VARIATION',unit:'Hz RMS'},
+    bias_l:{title:'BIAS · LEFT',unit:'HF vs LF'},
+    bias_r:{title:'BIAS · RIGHT',unit:'HF vs LF'}
   };
+  let biasTol=1;
+  const signed=(v,d)=>{const t=Math.abs(v).toFixed(d);return (Number(t)===0||v>0)?'+'+t:'-'+t;};
   for(const k in M){const m=M[k];m.canvas=$('m_'+k);m.g=m.canvas.getContext('2d');m.dirty=true;}
 
   async function getAudioDevices() {
@@ -406,19 +580,26 @@ ul { padding-left: 1.25rem; }
     };
     const p=settings[precision]||settings.normal, fr=p.freq;
     
-    const lvlConfig = {min:-80,max:0,ticks:[-80,-60,-40,-20,0],fmt:v=>v,zones:[[-80,-60,RED],[-60,-45,YEL],[-45,-6,GRN],[-6,0,RED]]};
+    const lvlConfig = {
+      kind:'vu', min:-20, max:9, face:'VU', pct:true, redFrom:0, peakLed:true,
+      ticks:[-20,-10,-7,-5,-3,-2,-1,0,1,2,3,5],
+      minor:[-15,-4,-2.5,-1.5,-.5,.5,1.5,2.5,4],
+      fmt:v=>(v>0?'+':'')+v,
+      stops:[[-20,0],[-10,.25],[-7,.34],[-5,.41],[-3,.49],[-2,.55],[-1,.61],[0,.67],[1,.73],[2,.79],[3,.85],[5,1]],
+      zones:[[-20,0,null],[0,5,RED]],
+      ledZones:[[-20,0,YEL],[0,9,RED]],
+      cols:[-20,-15,-10,-7,-5,-3,-2,-1,0,1,2,3,5,7,9],
+      colLabels:['-20','15','10','7','5','3','2','1','0','1','2','3','5','7','9+'], cw:5,
+      rd:v=>signed(v,1), rdSuffix:'dB', rdLabel:'PEAK HOLD',
+      foot:()=>'0 VU = '+vuZero()+' dBFS'
+    };
     Object.assign(M.level_l, lvlConfig);
     Object.assign(M.level_r, lvlConfig);
-
-    Object.assign(M.bal, {
-      min:-12, max:12, ticks:[-12,-8,-4,0,4,8,12],
-      fmt:v=>(v>0?'+R':v<0?'-L':'0'),
-      zones:[[-12,-3,RED],[-3,-1,YEL],[-1,1,GRN],[1,3,YEL],[3,12,RED]]
-    });
 
     const fmin=ref*(1-fr),fmax=ref*(1+fr);
     const freqTicks=[-1,-.5,0,.5,1].map(x=>ref*(1+x*fr));
     Object.assign(M.freq,{
+      kind:'lin',face:'Hz',rd:v=>v.toFixed(1),rdSuffix:'Hz',
       min:fmin,
       max:fmax,
       ticks:freqTicks,
@@ -433,56 +614,261 @@ ul { padding-left: 1.25rem; }
     });
     
     const sr=p.speed;
-    Object.assign(M.speed,{min:-sr,max:sr,ticks:[-sr,-sr*.6,-sr*.2,0,sr*.2,sr*.6,sr],fmt:v=>(v>0?'+':'')+Number(v.toFixed(2)),
+    Object.assign(M.speed,{kind:'lin',face:'%',rd:v=>signed(v,2),rdSuffix:'%',min:-sr,max:sr,ticks:[-sr,-sr*.6,-sr*.2,0,sr*.2,sr*.6,sr],fmt:v=>(v>0?'+':'')+Number(v.toFixed(2)),
       zones:[[-sr,-sr*.6,RED],[-sr*.6,-sr*.2,YEL],[-sr*.2,sr*.2,GRN],[sr*.2,sr*.6,YEL],[sr*.6,sr,RED]]});
     
     const wr=p.wf;
-    Object.assign(M.wf,{min:0,max:wr,ticks:Array.from({length:7},(_,i)=>wr*i/6),fmt:v=>v.toFixed(2),zones:[[0,wr*.25,GRN],[wr*.25,wr*.5,YEL],[wr*.5,wr,RED]]});
+    Object.assign(M.wf,{kind:'lin',face:'W&F',rd:v=>v.toFixed(3),rdSuffix:'%',min:0,max:wr,ticks:Array.from({length:7},(_,i)=>wr*i/6),fmt:v=>v.toFixed(2),zones:[[0,wr*.25,GRN],[wr*.25,wr*.5,YEL],[wr*.5,wr,RED]]});
     
     const dv=p.dev*u;
-    Object.assign(M.dev,{min:0,max:dv,ticks:Array.from({length:7},(_,i)=>dv*i/6),fmt:v=>String(+v.toFixed(2)),zones:[[0,dv*.25,GRN],[dv*.25,dv*.5,YEL],[dv*.5,dv,RED]]});
+    Object.assign(M.dev,{kind:'lin',face:'Hz',rd:v=>v.toFixed(2),rdSuffix:'Hz',min:0,max:dv,ticks:Array.from({length:7},(_,i)=>dv*i/6),fmt:v=>String(+v.toFixed(2)),zones:[[0,dv*.25,GRN],[dv*.25,dv*.5,YEL],[dv*.5,dv,RED]]});
     
-    for(const k in M){const m=M[k];m.dirty=true;if(m.cur===undefined)m.cur=m.target=m.min;}
+    Object.assign(M.bias_l,biasCfg());Object.assign(M.bias_r,biasCfg());
+
+    for(const k in M){
+      const m=M[k];
+      m.dirty=true;
+      if(m.cur===undefined){m.cur=m.target=k.startsWith('bias')?0:m.min;}
+      if(m.off===undefined)m.off=true;
+      m.vel=m.vel||0;
+      m.center=(k==='speed'||k==='freq'||k.startsWith('bias'))?(m.min+m.max)/2:m.min;
+      m.peak=m.min;m.peakT=0;
+      if(m.kind==='lin'){m.cols=Array.from({length:40},(_,i)=>m.min+(m.max-m.min)*i/39);m.cw=2;}
+    }
   }
 
   function parkMeters(live){
     for(const k in M){
-      if(live || (k!=='level_l' && k!=='level_r' && k!=='bal')){
-        if(k==='bal') M[k].target = 0;
-        else M[k].target = M[k].min;
+      if(k.startsWith('bias')) continue;
+      if(live || (k!=='level_l' && k!=='level_r')){
+        M[k].target = M[k].min;
+        M[k].off = true;
       }
     }
   }
+  function setT(k,v){const m=M[k];m.target=v;m.off=false;}
+  function biasCfg(){
+    const t=biasTol,a=Math.min(5.5,2.5*t);
+    return {kind:'lin',min:-6,max:6,ticks:[-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6],sub:1,face:'dB',fmt:v=>(v>0?'+':'')+v,
+      rd:v=>signed(v,1),rdSuffix:'dB',
+      zones:[[-6,-a,RED],[-a,-t,YEL],[-t,t,GRN],[t,a,YEL],[a,6,RED]]};
+  }
 
-  function drawMeter(m){
-    const g=m.g,W=m.canvas.width,H=m.canvas.height,cx=W/2,cy=H*.93,R=H*.74,A=52*Math.PI/180;
-    const ang=v=>-A+2*A*(Math.min(1.04,Math.max(-.04,(v-m.min)/(m.max-m.min))));
+  /* ================= Meter engine: analog VU + dot-matrix digital ================= */
+  let meterStyle='analog';
+  const STYLE_KEY='cassetteMeterStyle.v1', VUREF_KEY='cassetteVuRef.v1';
+  const LED_COL={[RED]:'#ff4d3d',[YEL]:'#ffb81f',[GRN]:'#67e0c3'};
+  const zoneLed=(m,v)=>{const Z=m.ledZones||m.zones;for(const z of Z){if(v>=z[0]-1e-9&&v<=z[1]+1e-9)return LED_COL[z[2]]||z[2]||'#ffb81f';}const z=Z[Z.length-1];return LED_COL[z[2]]||z[2]||'#ffb81f';};
+  const subTicks=(t,n)=>{const o=[];for(let i=0;i<t.length-1;i++)for(let j=1;j<=n;j++)o.push(t[i]+(t[i+1]-t[i])*j/(n+1));return o;};
+  const posOf=(m,v)=>{
+    const S=m.stops;
+    if(!S)return (v-m.min)/(m.max-m.min);
+    if(v<=S[0][0])return S[0][1];
+    for(let i=1;i<S.length;i++){if(v<=S[i][0]){const [a,pa]=S[i-1],[b,pb]=S[i];return pa+(pb-pa)*(v-a)/(b-a);}}
+    return S[S.length-1][1];
+  };
+
+  function drawAnalog(m){
+    const g=m.g,W=m.canvas.width,H=m.canvas.height,cx=W/2,cy=H*1.05,R=H*.74,A=48*Math.PI/180;
+    const ang=p=>-A+2*A*Math.min(1.04,Math.max(-.04,p));
     const pt=(a,r)=>[cx+r*Math.sin(a),cy-r*Math.cos(a)];
+    const P=v=>posOf(m,v), isRed=v=>m.redFrom!=null&&v>=m.redFrom-1e-9;
+    const ink='#2a2218';
     g.clearRect(0,0,W,H);
-    const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#f6ecc8');gr.addColorStop(1,'#d8c78b');
+    // backlit amber face, lamp glow, aged vignette
+    let gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#f1dc9e');gr.addColorStop(1,'#d9bd78');
     g.fillStyle=gr;g.fillRect(0,0,W,H);
-    m.zones.forEach(([a,b,col])=>{g.beginPath();g.arc(cx,cy,R*.93,ang(a)-Math.PI/2,ang(b)-Math.PI/2);g.strokeStyle=col;g.lineWidth=R*.07;g.stroke();});
-    g.strokeStyle='#2c2a22';g.fillStyle='#2c2a22';g.textAlign='center';g.textBaseline='middle';g.font='bold '+Math.round(W*.04)+'px system-ui';
-    m.ticks.forEach((t,i)=>{
-      let [x1,y1]=pt(ang(t),R*.78),[x2,y2]=pt(ang(t),R*.89);
-      g.lineWidth=2.5;g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();
-      const [lx,ly]=pt(ang(t),R*.66);g.fillText(m.fmt(t),lx,ly);
+    gr=g.createRadialGradient(cx,H*.02,4,cx,H*.02,W*.62);
+    gr.addColorStop(0,'rgba(255,214,120,.95)');gr.addColorStop(.35,'rgba(255,190,90,.42)');gr.addColorStop(1,'rgba(255,170,60,0)');
+    g.fillStyle=gr;g.fillRect(0,0,W,H);
+    gr=g.createRadialGradient(cx,H*.55,H*.35,cx,H*.55,W*.75);
+    gr.addColorStop(0,'rgba(90,50,10,0)');gr.addColorStop(1,'rgba(90,50,10,.38)');
+    g.fillStyle=gr;g.fillRect(0,0,W,H);
+    // lamp shade bar with glow underneath
+    g.fillStyle='#1a1510';g.fillRect(cx-W*.14,H*.012,W*.28,H*.035);
+    gr=g.createRadialGradient(cx,H*.05,2,cx,H*.05,W*.14);gr.addColorStop(0,'rgba(255,160,50,.85)');gr.addColorStop(1,'rgba(255,160,50,0)');
+    g.fillStyle=gr;g.fillRect(cx-W*.16,H*.047,W*.32,H*.12);
+    // scale arc and zone bands
+    g.lineCap='butt';
+    g.strokeStyle=ink;g.lineWidth=2;g.beginPath();g.arc(cx,cy,R,ang(0)-Math.PI/2,ang(1)-Math.PI/2);g.stroke();
+    (m.zones||[]).forEach(([a,b,col])=>{if(!col)return;g.beginPath();g.arc(cx,cy,R,ang(P(a))-Math.PI/2,ang(P(b))-Math.PI/2);g.strokeStyle=col;g.lineWidth=7;g.stroke();});
+    // percent scale (VU only)
+    g.textAlign='center';g.textBaseline='middle';
+    if(m.pct){
+      g.fillStyle='#4a3b22';g.strokeStyle='#4a3b22';g.lineWidth=1.2;g.font='bold '+Math.round(W*.022)+'px system-ui';
+      [20,40,60,80,100].forEach(pc=>{
+        const a=ang(P(20*Math.log10(pc/100))),[x1,y1]=pt(a,R+5),[x2,y2]=pt(a,R+10),[lx,ly]=pt(a,R+20);
+        g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.fillText(pc===100?'100%':String(pc),lx,ly);
+      });
+    }
+    // minor and major ticks with labels hanging inside the arc
+    const minor=m.minor||subTicks(m.ticks,m.sub==null?4:m.sub);
+    g.lineWidth=1.5;
+    minor.forEach(t=>{const a=ang(P(t)),[x1,y1]=pt(a,R-4),[x2,y2]=pt(a,R-12);g.strokeStyle=isRed(t)?'#a8261c':ink;g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();});
+    g.font='bold '+Math.round(W*.031)+'px system-ui';
+    m.ticks.forEach(t=>{
+      const a=ang(P(t)),[x1,y1]=pt(a,R-4),[x2,y2]=pt(a,R-19),[lx,ly]=pt(a,R-33);
+      const c=isRed(t)?'#a8261c':ink;g.strokeStyle=c;g.fillStyle=c;g.lineWidth=2.6;
+      g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.fillText(m.fmt(t),lx,ly);
     });
-    g.font='bold '+Math.round(W*.042)+'px system-ui';g.textAlign='left';g.fillText(m.title,W*.04,H*.09);
-    g.textAlign='right';g.font=Math.round(W*.036)+'px system-ui';g.fillText(m.unit,W*.96,H*.09);
-    const a=ang(m.cur),[nx,ny]=pt(a,R*.97);
-    g.strokeStyle='#161510';g.lineWidth=3;g.lineCap='round';g.beginPath();g.moveTo(cx,cy);g.lineTo(nx,ny);g.stroke();
-    g.fillStyle='#2b2a25';g.beginPath();g.arc(cx,cy,W*.03,0,2*Math.PI);g.fill();
+    // face legend
+    g.fillStyle='rgba(42,34,24,.88)';
+    g.font='bold '+Math.round(W*(m.face&&m.face.length>3?.075:.1))+'px system-ui';
+    g.fillText(m.face||'',cx,cy-R*.56);
+    g.fillStyle='#3b2f1c';g.textBaseline='middle';
+    g.font='bold '+Math.round(W*.04)+'px system-ui';g.textAlign='left';g.fillText(m.title,W*.04,H*.09);
+    g.textAlign='right';g.font=Math.round(W*.034)+'px system-ui';g.fillText(m.unit,W*.96,H*.09);
+    // peak lamp
+    if(m.peakLed){
+      const lx=W*.91,ly=H*.2;
+      g.beginPath();g.arc(lx,ly,7,0,7);g.fillStyle=m.led?'#ff3b2f':'#5a1a14';
+      if(m.led){g.shadowColor='#ff3b2f';g.shadowBlur=14;}
+      g.fill();g.shadowBlur=0;
+      g.fillStyle='#3b2f1c';g.textAlign='center';g.font='bold '+Math.round(W*.021)+'px system-ui';g.fillText('PEAK',lx,ly+17);
+    }
+    // needle: soft shadow, then body
+    const a=ang(P(m.cur)),[nx,ny]=pt(a,R+6);
+    g.lineCap='round';
+    g.strokeStyle='rgba(60,30,0,.28)';g.lineWidth=3;g.beginPath();g.moveTo(cx+4,cy+3);g.lineTo(nx+4,ny+3);g.stroke();
+    g.strokeStyle='#17120c';g.lineWidth=2.2;g.beginPath();g.moveTo(cx,cy);g.lineTo(nx,ny);g.stroke();
+    // meter housing under the pivot and glass sheen
+    gr=g.createLinearGradient(0,H*.86,0,H);gr.addColorStop(0,'#2b2318');gr.addColorStop(1,'#0e0b07');
+    g.fillStyle=gr;g.beginPath();g.ellipse(cx,H*1.04,W*.17,H*.17,0,Math.PI,2*Math.PI);g.fill();
+    gr=g.createLinearGradient(0,0,W,H*.8);gr.addColorStop(0,'rgba(255,255,255,.14)');gr.addColorStop(.45,'rgba(255,255,255,.03)');gr.addColorStop(.46,'rgba(255,255,255,0)');
+    g.fillStyle=gr;g.fillRect(0,0,W,H);
+  }
+
+  // seven-segment readout
+  const SEG7={'0':'abcdef','1':'bc','2':'abdeg','3':'abcdg','4':'bcfg','5':'acdfg','6':'acdefg','7':'abc','8':'abcdefg','9':'abcdfg','-':'g','+':'g'};
+  const seg7W=(str,h)=>{const w=h*.55,gap=h*.2,t=h*.14;let n=0;for(const ch of str)n+=(ch==='.')?t*2:(w+gap);return n-gap;};
+  function seg7(g,str,xr,y,h,col){
+    const w=h*.55,gap=h*.2,t=h*.14,hh=h/2-t*1.5;
+    let x=xr-seg7W(str,h);
+    for(const ch of str){
+      if(ch==='.'){g.fillStyle=col;g.fillRect(x+t*.2,y+h-t,t,t);x+=t*2;continue;}
+      const S={a:[x+t,y,w-2*t,t],b:[x+w-t,y+t,t,hh],c:[x+w-t,y+h/2+t*.5,t,hh],d:[x+t,y+h-t,w-2*t,t],e:[x,y+h/2+t*.5,t,hh],f:[x,y+t,t,hh],g:[x+t,y+h/2-t/2,w-2*t,t]};
+      g.shadowBlur=0;g.fillStyle='rgba(255,70,55,.09)';
+      for(const k in S)g.fillRect(S[k][0],S[k][1],S[k][2],S[k][3]);
+      g.fillStyle=col;g.shadowColor=col;g.shadowBlur=8;
+      for(const k of (SEG7[ch]||''))g.fillRect(S[k][0],S[k][1],S[k][2],S[k][3]);
+      if(ch==='+')g.fillRect(x+w/2-t/2,y+h*.27,t,h*.46);
+      g.shadowBlur=0;
+      x+=w+gap;
+    }
+  }
+
+  function drawDigital(m){
+    const g=m.g,W=m.canvas.width,H=m.canvas.height,isVU=m.kind==='vu';
+    g.clearRect(0,0,W,H);
+    const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0d141c');bg.addColorStop(1,'#070b10');
+    g.fillStyle=bg;g.fillRect(0,0,W,H);
+    g.textBaseline='middle';g.fillStyle='#8fa3b4';
+    g.font='bold '+Math.round(W*.04)+'px system-ui';g.textAlign='left';g.fillText(m.title,W*.04,H*.09);
+    g.font=Math.round(W*.034)+'px system-ui';g.textAlign='right';g.fillText(m.unit,W*.96,H*.09);
+    // digital readout
+    const txt=m.off?'----':m.rd(isVU?m.peak:m.cur);
+    g.font='bold '+Math.round(W*.05)+'px system-ui';
+    const sw=g.measureText(m.rdSuffix||'').width;
+    seg7(g,txt,W*.95-sw-8,H*.15,H*.17,'#ff4a3a');
+    g.fillStyle='#ff6a5a';g.textAlign='right';g.fillText(m.rdSuffix||'',W*.95,H*.29);
+    if(m.rdLabel){g.fillStyle='#8fa3b4';g.font='bold '+Math.round(W*.026)+'px system-ui';g.fillText(m.rdLabel,W*.95,H*.385);}
+    // dot-matrix bar
+    const rows=8,cols=m.cols,cw=m.cw,total=cols.length*cw;
+    const x0=isVU?W*.17:W*.06,x1=W*.95,dx=(x1-x0)/total,y0=H*.46,bh=H*.2,dy=bh/rows;
+    const idxOf=v=>{if(v<=cols[0])return 0;for(let i=1;i<cols.length;i++){if(v<=cols[i])return i-1+(v-cols[i-1])/(cols[i]-cols[i-1]);}return cols.length-1;};
+    const valAt=p=>{const q=Math.min(cols.length-1,Math.max(0,p)),i=Math.min(cols.length-2,Math.floor(q));return cols[i]+(cols[i+1]-cols[i])*(q-i);};
+    const bip=!isVU&&m.center>m.min,cur=m.cur;
+    const lo=bip?Math.min(m.center,cur):m.min,hi=bip?Math.max(m.center,cur):cur;
+    const pk=(isVU&&!m.off&&m.peak>cur+.4)?idxOf(m.peak):-99;
+    for(let d=0;d<total;d++){
+      const pos=-.5+(d+.5)/cw,v=valAt(pos);
+      const on=(!m.off&&v>=lo-1e-9&&v<=hi+1e-9)||Math.abs(pos-pk)<=1.4/cw;
+      g.globalAlpha=on?1:.11;g.fillStyle=zoneLed(m,v);
+      const x=x0+d*dx+dx*.17;
+      for(let r=0;r<rows;r++)g.fillRect(x,y0+r*dy+dy*.19,dx*.66,dy*.62);
+    }
+    g.globalAlpha=1;
+    g.textAlign='center';
+    if(isVU){
+      g.fillStyle='#ffb81f';g.fillRect(W*.04,y0,W*.1,bh);
+      g.fillStyle='#17110a';g.font='bold '+Math.round(bh*.8)+'px system-ui';g.fillText(m.badge||'',W*.09,y0+bh/2+1);
+      g.font='bold '+Math.round(W*.032)+'px system-ui';
+      m.colLabels.forEach((t,i)=>{g.fillStyle=cols[i]>0?'#ff5a4a':'#d6dde3';g.fillText(t,x0+(i*cw+cw/2)*dx,y0+bh+22);});
+      g.fillStyle='#6f8294';g.textAlign='left';g.font=Math.round(W*.028)+'px system-ui';g.fillText(m.foot?m.foot():'',W*.04,H*.93);
+    }else{
+      if(bip){const cxl=x0+(idxOf(m.center)*cw+cw/2)*dx;g.strokeStyle='rgba(237,245,248,.55)';g.lineWidth=2;g.beginPath();g.moveTo(cxl,y0-9);g.lineTo(cxl,y0+bh+9);g.stroke();}
+      g.strokeStyle='#3a5064';g.fillStyle='#9aabba';g.lineWidth=2;g.font='bold '+Math.round(W*.031)+'px system-ui';
+      m.ticks.forEach(t=>{const x=x0+(idxOf(t)*cw+cw/2)*dx;g.beginPath();g.moveTo(x,y0+bh+10);g.lineTo(x,y0+bh+18);g.stroke();g.fillText(m.fmt(t),x,y0+bh+34);});
+    }
+  }
+
+  function drawMeter(m){return meterStyle==='digital'?drawDigital(m):drawAnalog(m);}
+
+  const styleSel=$('meterStyle');
+  try{const sv=localStorage.getItem(STYLE_KEY);if(sv==='digital'||sv==='analog'){meterStyle=sv;styleSel.value=sv;}}catch(e){}
+  styleSel.addEventListener('change',()=>{
+    meterStyle=styleSel.value==='digital'?'digital':'analog';
+    try{localStorage.setItem(STYLE_KEY,meterStyle);}catch(e){}
+    for(const k in M)M[k].dirty=true;
+  });
+
+  // 0 VU reference
+  const vuIn=$('vuRef');
+  try{const v=parseFloat(localStorage.getItem(VUREF_KEY));if(Number.isFinite(v)&&v<=0&&v>=-60)vuIn.value=v;}catch(e){}
+  const vuZero=()=>{const v=Number(vuIn.value);return Number.isFinite(v)?v:-18;};
+  let lastLvl=null;
+  const vuChanged=()=>{try{localStorage.setItem(VUREF_KEY,String(vuZero()));}catch(e){}for(const k in M)M[k].dirty=true;};
+  vuIn.addEventListener('change',vuChanged);
+  $('vuSetRef').addEventListener('click',()=>{
+    if(!lastLvl||performance.now()-lastLvl.t>2000){setStatus('Start the analysis and play your reference tone first, then press Set 0 VU.','warn');return;}
+    vuIn.value=(Math.round((lastLvl.l+lastLvl.r)/2*2)/2).toFixed(1);
+    vuChanged();
+    setStatus('0 VU set to '+vuIn.value+' dBFS (average of both channels). Both needles should now sit near 0.','good');
+  });
+
+  // ballistics
+  function stepMeter(m,dt,dig){
+    const rng=m.max-m.min;
+    if(m.kind==='vu'){
+      if(dig){
+        m.cur=m.target>=m.cur?m.target:Math.max(m.target,m.cur-24*dt);   // instant attack, 24 dB/s release
+        m.na=Math.pow(10,m.cur/20);m.nv=0;
+      }else{
+        // VU needle: 2nd-order response in amplitude, ~300 ms to 99% with ~1.5% overshoot
+        const tgt=Math.pow(10,m.target/20),wn=16.7,z=.8;
+        if(m.na===undefined){m.na=Math.pow(10,m.cur/20);m.nv=0;}
+        const n=Math.max(1,Math.ceil(dt/.004)),h=dt/n;
+        for(let i=0;i<n;i++){m.nv+=(wn*wn*(tgt-m.na)-2*z*wn*m.nv)*h;m.na+=m.nv*h;}
+        if(m.na<0)m.na=0;
+        if(Math.abs(m.na-tgt)<1e-5&&Math.abs(m.nv)<1e-5){m.na=tgt;m.nv=0;}
+        m.cur=m.na>1e-5?20*Math.log10(m.na):-100;
+      }
+    }else{
+      if(dig){m.cur+=(m.target-m.cur)*(1-Math.exp(-dt/.08));}
+      else{
+        const wn=22,z=.9,n=Math.max(1,Math.ceil(dt/.004)),h=dt/n;
+        for(let i=0;i<n;i++){m.vel+=(wn*wn*(m.target-m.cur)-2*z*wn*m.vel)*h;m.cur+=m.vel*h;}
+      }
+      if(Math.abs(m.target-m.cur)<5e-5*rng&&Math.abs(m.vel)<5e-4*rng){m.cur=m.target;m.vel=0;}
+    }
   }
 
   function tick(){
+    const now=performance.now();
+    let dt=(now-(tick.t||now))/1000;tick.t=now;dt=Math.min(Math.max(dt,0),.05);
+    const dig=meterStyle==='digital';
     for(const k in M){
-      const m=M[k],d=m.target-m.cur;
-      if(Math.abs(d)>1e-4*(m.max-m.min)||m.dirty){
-        m.cur+=d*.2;
-        if(Math.abs(m.target-m.cur)<1e-4*(m.max-m.min))m.cur=m.target;
-        drawMeter(m);
-        m.dirty=false;
+      const m=M[k],rng=m.max-m.min;
+      stepMeter(m,dt,dig);
+      if(m.kind==='vu'){
+        if(m.cur>=m.peak){m.peak=m.cur;m.peakT=now;}
+        else if(now-m.peakT>1500){m.peak=Math.max(m.cur,m.peak-12*dt);}
+        if(m.cur>0)m.ledUntil=now+600;
+        m.led=now<(m.ledUntil||0);
+      }
+      const eps=rng*5e-4;
+      if(m.dirty||Math.abs(m.cur-m.dc)>eps||Math.abs((m.peak||0)-(m.dp||0))>eps||m.led!==m.dl||m.off!==m.doff){
+        drawMeter(m);m.dirty=false;m.dc=m.cur;m.dp=m.peak;m.dl=m.led;m.doff=m.off;
       }
     }
     requestAnimationFrame(tick);
@@ -530,7 +916,7 @@ ul { padding-left: 1.25rem; }
       const eff = effRef();
       const compShift = getTargetOffsetPct();
       const sp = ((lastAvg / eff) - 1) * 100 + compShift;
-      M.speed.target=sp;
+      setT('speed',sp);
     }
     calMsg('Trim active.');
   }
@@ -601,11 +987,10 @@ ul { padding-left: 1.25rem; }
   
   function resetResults(){
     samples=[];balanceSamples=[];allRows=[];locked=false;okCount=badCount=0;hadTone=false;setLock(false);
-    ['level_l','level_r','bal','freq','speed','wf','dev'].forEach(k=>setText('r_'+k,'—'));
+    ['level_l','level_r','freq','speed','wf','dev'].forEach(k=>setText('r_'+k,'—'));
     parkMeters(false);
     $('freqRange').textContent='Waiting for signal';
     $('speedAvg').textContent='Waiting for signal';
-    $('balHint').textContent='L/R Level Balance';
     $('lbl_l').textContent='Left Channel Level';
     $('lbl_r').textContent='Right Channel Level';
     $('balRecommendation').textContent='Play a stereo tone recording to calculate recommended volume adjustments.';
@@ -657,15 +1042,15 @@ ul { padding-left: 1.25rem; }
     
     if(!dL || !dR) return;
 
-    M.level_l.target=Math.max(M.level_l.min, Math.min(M.level_l.max, dL.level));
-    M.level_r.target=Math.max(M.level_r.min, Math.min(M.level_r.max, dR.level));
+    const zv=vuZero(), vuL=dL.level-zv, vuR=dR.level-zv;
+    lastLvl={l:dL.level,r:dR.level,t:now};
+    setT('level_l',Math.max(M.level_l.min, Math.min(M.level_l.max, vuL)));
+    setT('level_r',Math.max(M.level_r.min, Math.min(M.level_r.max, vuR)));
     
     const instantBalDiff = dR.level - dL.level;
-    M.bal.target=Math.max(M.bal.min, Math.min(M.bal.max, instantBalDiff));
 
-    setText('r_level_l', dL.level.toFixed(1));
-    setText('r_level_r', dR.level.toFixed(1));
-    setText('r_bal', (instantBalDiff >= 0 ? '+' : '') + instantBalDiff.toFixed(1));
+    setText('r_level_l', signed(vuL,1));
+    setText('r_level_r', signed(vuR,1));
 
     const analysisWindowSec = Number($('window').value) || 4;
     const winMs = analysisWindowSec * 1000;
@@ -677,8 +1062,8 @@ ul { padding-left: 1.25rem; }
     const avgL = balanceSamples.reduce((acc, s) => acc + s.l, 0) / Math.max(1, balanceSamples.length);
     const avgR = balanceSamples.reduce((acc, s) => acc + s.r, 0) / Math.max(1, balanceSamples.length);
 
-    $('lbl_l').textContent = `Left Avg: ${avgL.toFixed(1)} dB (${analysisWindowSec}s)`;
-    $('lbl_r').textContent = `Right Avg: ${avgR.toFixed(1)} dB (${analysisWindowSec}s)`;
+    $('lbl_l').textContent = `Left avg ${signed(avgL-zv,1)} VU (${avgL.toFixed(1)} dBFS, ${analysisWindowSec}s)`;
+    $('lbl_r').textContent = `Right avg ${signed(avgR-zv,1)} VU (${avgR.toFixed(1)} dBFS, ${analysisWindowSec}s)`;
 
     const absDiff = Math.abs(avgBalDiff);
     const ratio = Math.pow(10, absDiff / 20);
@@ -691,17 +1076,14 @@ ul { padding-left: 1.25rem; }
     } else if (absDiff <= 0.4) {
       recEl.textContent = `PERFECT BALANCE: Channels average within ${absDiff.toFixed(1)} dB over the last ${analysisWindowSec}s. No deck adjustment needed.`;
       recEl.className = "status good";
-      $('balHint').textContent = `Balanced (${analysisWindowSec}s Avg: ${(avgBalDiff>=0?'+':'')+avgBalDiff.toFixed(1)} dB)`;
     } else if (avgBalDiff > 0) {
       recEl.textContent = `RIGHT CHANNEL IS LOUDER BY AVG ${absDiff.toFixed(1)} dB (Right is ~${ratio.toFixed(2)}x as loud as Left over ${analysisWindowSec}s). ` +
         `To fix: LOWER your deck's Right Record Level potentiometer by ~${absDiff.toFixed(1)} dB, OR INCREASE the Left Record Level.`;
       recEl.className = "status warn";
-      $('balHint').textContent = `Right +${absDiff.toFixed(1)} dB Avg`;
     } else {
       recEl.textContent = `LEFT CHANNEL IS LOUDER BY AVG ${absDiff.toFixed(1)} dB (Left is ~${ratio.toFixed(2)}x as loud as Right over ${analysisWindowSec}s). ` +
         `To fix: LOWER your deck's Left Record Level potentiometer by ~${absDiff.toFixed(1)} dB, OR INCREASE the Right Record Level.`;
       recEl.className = "status warn";
-      $('balHint').textContent = `Left +${absDiff.toFixed(1)} dB Avg`;
     }
 
     const heard = dL.heard || dR.heard;
@@ -737,10 +1119,10 @@ ul { padding-left: 1.25rem; }
       const minSpd = Math.min(...speedVals);
       const maxSpd = Math.max(...speedVals);
 
-      M.freq.target=f;M.speed.target=avgCompSpd;
+      setT('freq',f);setT('speed',avgCompSpd);
       setText('r_freq',f.toFixed(2));
       setText('r_speed',avgCompSpd.toFixed(2));
-      if(vals.length>=10){M.wf.target=wf;M.dev.target=rms;setText('r_wf',wf.toFixed(3));setText('r_dev',rms.toFixed(2));}
+      if(vals.length>=10){setT('wf',wf);setT('dev',rms);setText('r_wf',wf.toFixed(3));setText('r_dev',rms.toFixed(2));}
       
       $('freqRange').textContent='Recent average: '+avg.toFixed(2)+' Hz · range '+Math.min(...vals).toFixed(1)+'–'+Math.max(...vals).toFixed(1)+' Hz';
       $('speedAvg').textContent='Recent average: '+(avgCompSpd>=0?'+':'')+avgCompSpd.toFixed(2)+'% · range '+(minSpd>=0?'+':'')+minSpd.toFixed(2)+'–'+(maxSpd>=0?'+':'')+maxSpd.toFixed(2)+'%';
@@ -830,6 +1212,10 @@ ul { padding-left: 1.25rem; }
   $('precision').addEventListener('change',setRanges);
   
   loadCal();bindCal();updateCal();updateRecordCalc();
+  window.CDLMeters={
+    setBias(ch,dev){const m=M['bias_'+String(ch).toLowerCase()];if(!m)return;if(dev==null){m.target=0;m.off=true;}else{m.target=Math.max(m.min,Math.min(m.max,dev));m.off=false;}},
+    setBiasTol(t){biasTol=Number(t)||1;setRanges();}
+  };
   drawChart();tick();
 })();
 </script>
@@ -1410,6 +1796,285 @@ ul { padding-left: 1.25rem; }
   window.CassetteSpeedLab = { CONFIG, analyzeFiles, computeTargetHz };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
+})();
+</script>
+<script>
+/* ---- Cassette bias calibration (self-contained: own AudioContexts, does not touch the other modules) ---- */
+(() => {
+  const $ = (id) => document.getElementById(id);
+  if (!$('biasPanel')) return;
+  const KEY = 'cassetteBiasCal.v1';
+  const TAPES = {
+    normal: 'Type I ferrite: 120 µs playback EQ and the lowest bias. This is the safe default if your deck has a single bias setting.',
+    chrome: 'Type II high-position: 70 µs playback EQ and more bias than Normal. Use this only if your deck has its own bias setting for Type II.',
+    metal: 'Type IV metal: 70 µs playback EQ and the highest bias and erase current. Many decks only adjust metal bias internally, if at all.'
+  };
+  const HIST_MS = 3000, TICK_MS = 100, RANGE_DB = 6;
+  const st = { ctx: null, stream: null, anL: null, anR: null, bufL: null, bufR: null, raf: 0, last: 0, hist: [], cur: null, ref: null,
+               toneCtx: null, osc: [], gain: null };
+
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        tape: $('biasTape').value, low: $('biasLow').value, hf: $('biasHf').value, tol: $('biasTol').value,
+        target: $('biasTarget').value, perDeck: $('biasPerDeck').checked, level: $('biasToneLevel').value
+      }));
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      const v = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!v) return;
+      const set = (id, val) => { const el = $(id); if (el && val != null && Array.from(el.options || [1]).some((o) => !el.options || o.value === String(val))) el.value = val; };
+      set('biasTape', v.tape); set('biasLow', v.low); set('biasHf', v.hf); set('biasTol', v.tol);
+      if (v.target != null && Number.isFinite(Number(v.target))) $('biasTarget').value = v.target;
+      if (v.level != null && Number.isFinite(Number(v.level))) $('biasToneLevel').value = v.level;
+      $('biasPerDeck').checked = !!v.perDeck;
+    } catch (e) {}
+  }
+
+  const lowHz = () => Number($('biasLow').value) || 1000;
+  const hfHz = () => Number($('biasHf').value) || 10000;
+  const tol = () => Number($('biasTol').value) || 1;
+  const target = () => { const v = Number($('biasTarget').value); return Number.isFinite(v) ? v : 0; };
+  const fmt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1);
+
+  function setStatus(text, cls) { const el = $('biasStatus'); el.textContent = text; el.className = 'status' + (cls ? ' ' + cls : ''); }
+
+  /* ---------- test-tone generator ---------- */
+  function updateLevelLabel() {
+    $('biasToneLevelRead').textContent = $('biasToneLevel').value + ' dBFS';
+    if (st.gain && st.toneCtx) st.gain.gain.setTargetAtTime(Math.pow(10, Number($('biasToneLevel').value) / 20), st.toneCtx.currentTime, 0.03);
+  }
+  function stopTones() {
+    if (st.toneCtx) {
+      const c = st.toneCtx, g = st.gain, o = st.osc;
+      try { g.gain.setTargetAtTime(0, c.currentTime, 0.03); } catch (e) {}
+      setTimeout(() => { o.forEach((x) => { try { x.stop(); } catch (e) {} }); c.close().catch(() => {}); }, 150);
+    }
+    st.toneCtx = null; st.osc = []; st.gain = null;
+    $('biasPlay').disabled = false; $('biasStopTone').disabled = true;
+    $('biasTonePill').textContent = 'Tones off'; $('biasTonePill').className = 'pill';
+  }
+  async function playTones() {
+    stopTones();
+    try {
+      const c = new (window.AudioContext || window.webkitAudioContext)();
+      await c.resume();
+      const g = c.createGain(); g.gain.value = 0;
+      const level = Math.pow(10, Number($('biasToneLevel').value) / 20);
+      const oscs = [lowHz(), hfHz()].map((f) => { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.connect(g); o.start(); return o; });
+      g.connect(c.destination);
+      g.gain.setTargetAtTime(level, c.currentTime, 0.03);
+      st.toneCtx = c; st.osc = oscs; st.gain = g;
+      $('biasPlay').disabled = true; $('biasStopTone').disabled = false;
+      $('biasTonePill').textContent = 'Playing ' + (lowHz() >= 1000 ? lowHz() / 1000 + ' kHz' : lowHz() + ' Hz') + ' + ' + hfHz() / 1000 + ' kHz';
+      $('biasTonePill').className = 'pill rec-on';
+    } catch (e) { setStatus('Could not start the tone generator: ' + e.message, 'warn'); }
+  }
+
+  /* ---------- measurement ---------- */
+  function toneLevel(an, buf, f0) {
+    an.getFloatFrequencyData(buf);
+    const binHz = st.ctx.sampleRate / an.fftSize;
+    const kMin = Math.max(6, Math.floor(f0 * 0.9 / binHz)), kMax = Math.min(buf.length - 7, Math.ceil(f0 * 1.1 / binHz));
+    if (kMax - kMin < 8) return null;
+    let bk = kMin, best = -Infinity;
+    for (let k = kMin; k <= kMax; k++) { const v = Math.max(-140, buf[k]); if (v > best) { best = v; bk = k; } }
+    const sorted = Float32Array.from(buf.subarray(kMin, kMax + 1), (x) => Math.max(-140, x)).sort();
+    const median = sorted[sorted.length >> 1];
+    let p = 0;
+    for (let k = bk - 4; k <= bk + 4; k++) p += Math.pow(10, Math.max(-140, buf[k]) / 10);
+    return { db: 10 * Math.log10(p), heard: best > -85 && best - median >= 15 };
+  }
+
+  function setGauge(id, dev) {
+    if (window.CDLMeters) window.CDLMeters.setBias(id.slice(-1), dev);
+  }
+
+  function verdict(ch, dev, other) {
+    const t = tol(), perDeck = $('biasPerDeck').checked, el = $('biasVerdict' + ch);
+    if (dev == null) { el.textContent = 'Waiting for both tones on this channel.'; el.className = 'bias-verdict'; return; }
+    const lead = fmt(dev) + ' dB from target. ';
+    if (Math.abs(dev) <= t) { el.textContent = lead + 'Bias looks right for this channel.'; el.className = 'bias-verdict good'; return; }
+    const low = dev < 0;
+    const cause = low ? 'Highs are low, which points to over-biasing.' : 'Highs are high, which points to under-biasing.';
+    const fix = perDeck
+      ? (low ? 'Reduce this channel\'s bias a little, re-record and measure again.' : 'Increase this channel\'s bias a little, re-record and measure again.')
+      : 'Your deck has no per-type bias control, so treat this as a health check. Clean and demagnetise the heads and check azimuth, or try a tape that suits the deck better.';
+    el.textContent = lead + cause + ' ' + fix;
+    el.className = 'bias-verdict ' + (Math.abs(dev) > t * 2.5 ? 'bad' : 'warn');
+  }
+
+  function render() {
+    const h = st.hist, now = performance.now();
+    while (h.length && now - h[0].t > HIST_MS) h.shift();
+    const avg = (key) => { const v = h.map((x) => x[key]).filter((x) => x != null); return v.length >= 3 ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const out = { L: null, R: null };
+    ['L', 'R'].forEach((ch) => {
+      const lo = avg('lo' + ch), hi = avg('hi' + ch);
+      if (lo == null || hi == null) {
+        $('biasDev' + ch).textContent = '—'; setGauge('biasMark' + ch, null);
+        $('biasLvl' + ch).textContent = 'Low — dB · High — dB';
+        verdict(ch, null); return;
+      }
+      const delta = hi - lo, refD = st.ref ? st.ref[ch] : 0;
+      const dev = delta - refD - target();
+      out[ch] = { delta, dev };
+      $('biasDev' + ch).textContent = fmt(dev);
+      setGauge('biasMark' + ch, dev);
+      $('biasLvl' + ch).textContent = 'Low ' + lo.toFixed(1) + ' dB · High ' + hi.toFixed(1) + ' dB · raw ' + fmt(delta) + ' dB';
+      verdict(ch, dev);
+    });
+    st.cur = out;
+    $('biasSetRef').disabled = !(out.L || out.R);
+    const have = ['L', 'R'].filter((c) => out[c]);
+    if (!have.length) setStatus('Listening. Play back the recorded tones, or check the input level and the tone pair selected above.', '');
+    else {
+      const ok = have.every((c) => Math.abs(out[c].dev) <= tol());
+      let msg = ok ? 'Bias is within ±' + tol() + ' dB on ' + (have.length === 2 ? 'both channels.' : 'the ' + (have[0] === 'L' ? 'left' : 'right') + ' channel.')
+                   : 'Bias is out of tolerance. See the per-channel notes below.';
+      if (out.L && out.R && Math.abs(out.L.dev - out.R.dev) > tol()) { msg += ' Left and right differ by ' + Math.abs(out.L.dev - out.R.dev).toFixed(1) + ' dB, so adjust each channel\'s trim pot separately.'; }
+      setStatus(msg, ok ? 'good' : 'warn');
+    }
+  }
+
+  function tick() {
+    st.raf = requestAnimationFrame(tick);
+    if (!st.ctx || !st.anL) return;
+    const now = performance.now();
+    if (now - st.last < TICK_MS) return;
+    st.last = now;
+    const lo = lowHz(), hi = hfHz();
+    const a = toneLevel(st.anL, st.bufL, lo), b = toneLevel(st.anL, st.bufL, hi);
+    const c = toneLevel(st.anR, st.bufR, lo), d = toneLevel(st.anR, st.bufR, hi);
+    const row = { t: now, loL: null, hiL: null, loR: null, hiR: null };
+    if (a && b && a.heard && b.heard) { row.loL = a.db; row.hiL = b.db; }
+    if (c && d && c.heard && d.heard) { row.loR = c.db; row.hiR = d.db; }
+    st.hist.push(row);
+    render();
+  }
+
+  async function startMeasure() {
+    try {
+      const dev = $('audioSource') && $('audioSource').value;
+      st.stream = await navigator.mediaDevices.getUserMedia({ audio: {
+        channelCount: { ideal: 2 }, echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+        ...(dev ? { deviceId: { exact: dev } } : {})
+      } });
+      st.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      await st.ctx.resume();
+      const src = st.ctx.createMediaStreamSource(st.stream), sp = st.ctx.createChannelSplitter(2);
+      st.anL = st.ctx.createAnalyser(); st.anR = st.ctx.createAnalyser();
+      [st.anL, st.anR].forEach((a) => { a.fftSize = 32768; a.smoothingTimeConstant = 0; });
+      st.bufL = new Float32Array(st.anL.frequencyBinCount); st.bufR = new Float32Array(st.anR.frequencyBinCount);
+      src.connect(sp); sp.connect(st.anL, 0); sp.connect(st.anR, 1);
+      st.hist = []; st.last = 0;
+      $('biasStart').disabled = true; $('biasStop').disabled = false;
+      setStatus('Listening. Play back the recorded tones.', '');
+      st.raf = requestAnimationFrame(tick);
+    } catch (e) { setStatus('Could not open the audio input: ' + e.message, 'warn'); }
+  }
+  function stopMeasure() {
+    cancelAnimationFrame(st.raf);
+    if (st.stream) st.stream.getTracks().forEach((t) => t.stop());
+    if (st.ctx) st.ctx.close().catch(() => {});
+    st.stream = st.ctx = st.anL = st.anR = null; st.hist = [];
+    $('biasStart').disabled = false; $('biasStop').disabled = true; $('biasSetRef').disabled = true;
+    ['L', 'R'].forEach((ch) => { $('biasDev' + ch).textContent = '—'; setGauge('biasMark' + ch, null); $('biasLvl' + ch).textContent = 'Low — dB · High — dB'; verdict(ch, null); $('biasVerdict' + ch).textContent = ''; });
+    setStatus('Stopped. Press Start bias measurement, then play back your recorded tones.', '');
+  }
+
+  function refInfo() {
+    const el = $('biasRefInfo');
+    $('biasClearRef').disabled = !st.ref;
+    el.textContent = st.ref
+      ? 'Source reference set: left ' + fmt(st.ref.L) + ' dB, right ' + fmt(st.ref.R) + ' dB. Readings above are corrected by it.'
+      : 'No source reference. The high and low tones are assumed to be equal in level on a perfect tape.';
+  }
+  function setRef() {
+    const c = st.cur; if (!c || !(c.L || c.R)) return;
+    st.ref = { L: c.L ? c.L.delta : (c.R.delta), R: c.R ? c.R.delta : (c.L.delta) };
+    refInfo(); st.hist = [];
+    setStatus('Source reference stored. Use this while playing the test tones straight into the input, with no tape in the loop, to cancel any imbalance from your soundcard.', 'good');
+  }
+  function clearRef() { st.ref = null; refInfo(); st.hist = []; }
+
+  function onToneChange() { st.ref = null; refInfo(); st.hist = []; save(); if (st.toneCtx) playTones(); }
+
+  function init() {
+    load();
+    const upd = () => { $('biasTapeHint').textContent = TAPES[$('biasTape').value] || ''; };
+    upd(); updateLevelLabel(); refInfo();
+    if (window.CDLMeters) window.CDLMeters.setBiasTol(tol());
+    ['L', 'R'].forEach((ch) => verdict(ch, null));
+    $('biasTape').addEventListener('change', () => { upd(); st.hist = []; save(); });
+    $('biasLow').addEventListener('change', onToneChange);
+    $('biasHf').addEventListener('change', onToneChange);
+    $('biasTol').addEventListener('change', () => { save(); if (window.CDLMeters) window.CDLMeters.setBiasTol(tol()); render(); });
+    $('biasTarget').addEventListener('input', () => { save(); if (st.ctx) render(); });
+    $('biasPerDeck').addEventListener('change', () => { save(); if (st.ctx) render(); });
+    $('biasToneLevel').addEventListener('input', () => { updateLevelLabel(); save(); });
+    $('biasPlay').addEventListener('click', playTones);
+    $('biasStopTone').addEventListener('click', stopTones);
+    $('biasStart').addEventListener('click', startMeasure);
+    $('biasStop').addEventListener('click', stopMeasure);
+    $('biasSetRef').addEventListener('click', setRef);
+    $('biasClearRef').addEventListener('click', clearRef);
+    window.addEventListener('pagehide', () => { stopTones(); if (st.ctx) stopMeasure(); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+<script>
+/* ---- Meter tabs (UI only) ---- */
+(() => {
+  const tabs = Array.from(document.querySelectorAll('.mtab'));
+  if (!tabs.length) return;
+  const KEY = 'cassetteMeterTab.v1';
+  function select(tab, focus) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      const pane = document.getElementById(t.getAttribute('aria-controls'));
+      if (pane) pane.hidden = !on;
+    });
+    if (focus) tab.focus();
+    try { localStorage.setItem(KEY, tab.id); } catch (e) {}
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => select(t));
+    t.addEventListener('keydown', (e) => {
+      let j = -1;
+      if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = tabs.length - 1;
+      if (j >= 0) { e.preventDefault(); select(tabs[j], true); }
+    });
+  });
+  let first = tabs[0];
+  try { const id = localStorage.getItem(KEY); const f = tabs.find((t) => t.id === id); if (f) first = f; } catch (e) {}
+  select(first);
+})();
+</script>
+<script>
+/* ---- Optional-tool accordion (one open at a time) ---- */
+(() => {
+  const items = Array.from(document.querySelectorAll('details[name="opt-tools"]'));
+  if (!items.length) return;
+  // Fallback for browsers without native exclusive <details name>
+  items.forEach((d) => d.addEventListener('toggle', () => {
+    if (d.open) items.forEach((o) => { if (o !== d) o.open = false; });
+  }));
+  // Dropping audio files anywhere opens the music-drift tool so the drop boxes are visible
+  window.addEventListener('drop', (e) => {
+    const t = e.dataTransfer && e.dataTransfer.types;
+    const sd = document.getElementById('sdPanel');
+    if (sd && t && Array.prototype.indexOf.call(t, 'Files') >= 0) sd.open = true;
+  });
 })();
 </script>
 </body>
