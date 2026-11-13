@@ -2036,8 +2036,9 @@ ul { padding-left: 1.25rem; }
         channelCount: { ideal: 2 }, echoCancellation: false, noiseSuppression: false, autoGainControl: false,
         ...(dev ? { deviceId: { exact: dev } } : {})
       } });
-      getAudioDevices();
-      getBiasOutputDevices();
+      // The bias tool is in a separate IIFE from the main audio tool.
+      // Its selected input is already read above; do not call helpers that
+      // are private to the other script scope.
       st.ctx = new (window.AudioContext || window.webkitAudioContext)();
       await st.ctx.resume();
       const src = st.ctx.createMediaStreamSource(st.stream), sp = st.ctx.createChannelSplitter(2);
@@ -2049,7 +2050,13 @@ ul { padding-left: 1.25rem; }
       $('biasStart').disabled = true; $('biasStop').disabled = false;
       setStatus('Listening. Play back the recorded tones.', '');
       st.raf = requestAnimationFrame(tick);
-    } catch (e) { setStatus('Could not open the audio input: ' + e.message, 'warn'); }
+    } catch (e) {
+      if (st.stream) st.stream.getTracks().forEach(track => track.stop());
+      if (st.ctx) st.ctx.close().catch(() => {});
+      st.stream = null; st.ctx = null; st.anL = null; st.anR = null;
+      $('biasStart').disabled = false; $('biasStop').disabled = true;
+      setStatus('Could not open the audio input: ' + e.message, 'warn');
+    }
   }
   function stopMeasure() {
     cancelAnimationFrame(st.raf);
