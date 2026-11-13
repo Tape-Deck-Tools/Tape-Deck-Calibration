@@ -1056,7 +1056,30 @@ ul { padding-left: 1.25rem; }
     const delta=Math.abs(denom)>1e-9?0.5*(a-c)/denom:0;
     const f=(bk+Math.max(-.5,Math.min(.5,delta)))*binHz;
     const edge=bk<=kMin||bk>=kMax;
-    return {f,level:best,heard:!edge&&best>MIN_DB&&best-median>=PROMINENCE_DB};
+
+    // Measure the tone's energy across its whole FFT main lobe, not just
+    // the single tallest bin. This reduces false L/R differences caused by
+    // tiny frequency offsets or FFT-bin leakage between the two channels.
+    const bandStart=Math.max(1,bk-3), bandEnd=Math.min(dbBuffer.length-2,bk+3);
+    let bandPower=0;
+    for(let k=bandStart;k<=bandEnd;k++) bandPower += Math.pow(10,v(k)/10);
+
+    // Estimate the nearby noise floor from bins outside the tone's main lobe
+    // and subtract its contribution from the measured band.
+    const noiseBins=[];
+    for(let k=Math.max(1,bk-18);k<=Math.min(dbBuffer.length-2,bk+18);k++){
+      if(Math.abs(k-bk)>=8) noiseBins.push(v(k));
+    }
+    noiseBins.sort((x,y)=>x-y);
+    const noiseDb=noiseBins.length?noiseBins[Math.floor(noiseBins.length/2)]:-120;
+    const binCount=bandEnd-bandStart+1;
+    const noisePower=binCount*Math.pow(10,noiseDb/10);
+    const cleanPower=Math.max(bandPower-noisePower,Math.pow(10,best/10));
+
+    // A Blackman-windowed analyser spreads a centered sine across bins;
+    // 1.9 keeps the integrated result close to the former peak-bin scale.
+    const measuredLevel=10*Math.log10(cleanPower/1.9);
+    return {f,level:measuredLevel,peakLevel:best,heard:!edge&&best>MIN_DB&&best-median>=PROMINENCE_DB};
   }
 
   function drawChart(){
