@@ -418,7 +418,13 @@ ul { padding-left: 1.25rem; }
       <div class="calc-card" style="margin-top:0">
         <h3>1. Test tone to record</h3>
         <p class="small muted">Plays the low and high tones together at equal level. Connect your computer's output to the deck's line in and record it onto a blank tape. Keep the level low, since a loud 10&nbsp;kHz tone saturates the tape and gives false readings.</p>
-        <label class="field">Level per tone <span id="biasToneLevelRead">-20 dBFS</span>
+        <label class="field">Audio output device
+          <select id="biasOutput">
+            <option value="">System default output</option>
+          </select>
+        </label>
+        <p class="small muted" id="biasOutputHelp" style="margin:7px 0 0">Choose the sound device connected to your cassette deck's line input. The test tones will play through this output.</p>
+        <label class="field" style="margin-top:12px">Level per tone <span id="biasToneLevelRead">-20 dBFS</span>
           <input id="biasToneLevel" type="range" min="-40" max="-6" step="1" value="-20">
         </label>
         <div class="controls" style="margin-top:12px">
@@ -559,8 +565,44 @@ ul { padding-left: 1.25rem; }
     }
   });
 
-  navigator.mediaDevices?.addEventListener('devicechange', getAudioDevices);
+  async function getBiasOutputDevices() {
+    const select = $('biasOutput');
+    if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      const current = select.value || localStorage.getItem('cassetteBiasOutput.v1') || '';
+      select.innerHTML = '';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'System default output';
+      select.appendChild(defaultOption);
+      outputs.forEach((device, i) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `Audio Output ${i + 1}`;
+        select.appendChild(option);
+      });
+      if ([...select.options].some(o => o.value === current)) select.value = current;
+      else if (current) localStorage.removeItem('cassetteBiasOutput.v1');
+      if (!outputs.length) {
+        $('biasOutputHelp').textContent = 'No selectable output devices were reported. The tones will use your system default output.';
+      } else if (typeof (window.AudioContext || window.webkitAudioContext)?.prototype?.setSinkId !== 'function') {
+        $('biasOutputHelp').textContent = 'This browser does not support choosing an output device for Web Audio. The tones will use your system default output.';
+      } else {
+        $('biasOutputHelp').textContent = 'Choose the sound device connected to your cassette deck’s line input. The test tones will play through this output.';
+      }
+    } catch (e) {
+      console.warn('Could not enumerate audio output devices:', e);
+    }
+  }
+
+  navigator.mediaDevices?.addEventListener('devicechange', () => {
+    getAudioDevices();
+    getBiasOutputDevices();
+  });
   getAudioDevices();
+  getBiasOutputDevices();
   
   function getTargetOffsetPct(){
     if(!recCompActive) return 0;
@@ -1859,7 +1901,16 @@ ul { padding-left: 1.25rem; }
   async function playTones() {
     stopTones();
     try {
-      const c = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const c = new AudioCtx();
+      const outputId = $('biasOutput')?.value || '';
+      if (outputId) {
+        if (typeof c.setSinkId !== 'function') {
+          await c.close();
+          throw new Error('This browser does not support selecting an audio output for generated tones. Try a recent version of Chrome or Edge.');
+        }
+        await c.setSinkId(outputId);
+      }
       await c.resume();
       const g = c.createGain(); g.gain.value = 0;
       const level = Math.pow(10, Number($('biasToneLevel').value) / 20);
@@ -1962,6 +2013,8 @@ ul { padding-left: 1.25rem; }
         channelCount: { ideal: 2 }, echoCancellation: false, noiseSuppression: false, autoGainControl: false,
         ...(dev ? { deviceId: { exact: dev } } : {})
       } });
+      getAudioDevices();
+      getBiasOutputDevices();
       st.ctx = new (window.AudioContext || window.webkitAudioContext)();
       await st.ctx.resume();
       const src = st.ctx.createMediaStreamSource(st.stream), sp = st.ctx.createChannelSplitter(2);
@@ -2015,6 +2068,15 @@ ul { padding-left: 1.25rem; }
     $('biasTarget').addEventListener('input', () => { save(); if (st.ctx) render(); });
     $('biasPerDeck').addEventListener('change', () => { save(); if (st.ctx) render(); });
     $('biasToneLevel').addEventListener('input', () => { updateLevelLabel(); save(); });
+    $('biasOutput').addEventListener('change', async () => {
+      const selected = $('biasOutput').value;
+      if (selected) localStorage.setItem('cassetteBiasOutput.v1', selected);
+      else localStorage.removeItem('cassetteBiasOutput.v1');
+      if (st.toneCtx) await playTones();
+      else setStatus('Bias tone output set to ' + ($('biasOutput').selectedOptions[0]?.textContent || 'system default') + '.', 'good');
+    });
+    const savedBiasOutput = localStorage.getItem('cassetteBiasOutput.v1');
+    if (savedBiasOutput) $('biasOutput').value = savedBiasOutput;
     $('biasPlay').addEventListener('click', playTones);
     $('biasStopTone').addEventListener('click', stopTones);
     $('biasStart').addEventListener('click', startMeasure);
