@@ -424,6 +424,14 @@ ul { padding-left: 1.25rem; }
           </select>
         </label>
         <p class="small muted" id="biasOutputHelp" style="margin:7px 0 0">Choose the sound device connected to your cassette deck's line input. The test tones will play through this output.</p>
+        <label class="field" style="margin-top:12px">Routing method
+          <select id="biasRoute">
+            <option value="auto">Auto (audio element, then Web Audio)</option>
+            <option value="element">Audio element</option>
+            <option value="context">Web Audio output</option>
+          </select>
+        </label>
+        <p class="small muted" id="biasRouteInfo" style="margin:7px 0 0">If tones come out of the wrong device, switch the routing method and press Play test tones again.</p>
         <label class="field" style="margin-top:12px">Level per tone <span id="biasToneLevelRead">-20 dBFS</span>
           <input id="biasToneLevel" type="range" min="-40" max="-6" step="1" value="-20">
         </label>
@@ -1936,26 +1944,36 @@ ul { padding-left: 1.25rem; }
     }
   }
 
-  // Send the tone bus to the chosen output. Routing through an <audio> element is the most
-  // widely reliable way to pick a device; AudioContext.setSinkId is the fallback.
-  async function routeTones(c, bus, outputId) {
-    if (!outputId) { bus.connect(c.destination); return { el: null, how: 'system default' }; }
-    if (typeof HTMLMediaElement.prototype.setSinkId === 'function' && c.createMediaStreamDestination) {
-      const dest = c.createMediaStreamDestination();
-      bus.connect(dest);
-      const el = new Audio();
-      el.srcObject = dest.stream;
-      await applySink((id) => el.setSinkId(id), outputId);
-      if (typeof el.sinkId === 'string' && el.sinkId !== outputId) throw new Error('The browser did not switch to the selected output device.');
-      await el.play();
-      return { el, how: 'audio element' };
+  // Send the tone bus to the chosen output and report what the browser says it applied.
+  async function routeViaElement(c, bus, outputId) {
+    if (typeof HTMLMediaElement.prototype.setSinkId !== 'function' || !c.createMediaStreamDestination) throw new Error('Audio-element output selection is not available in this browser.');
+    const dest = c.createMediaStreamDestination();
+    bus.connect(dest);
+    const el = new Audio();
+    el.srcObject = dest.stream;
+    await applySink((id) => el.setSinkId(id), outputId);
+    const reported = typeof el.sinkId === 'string' ? el.sinkId : '';
+    if (reported !== outputId) throw new Error('The browser did not switch the audio element to the selected device.');
+    await el.play();
+    return { el, how: 'audio element', reported };
+  }
+  async function routeViaContext(c, bus, outputId) {
+    if (typeof c.setSinkId !== 'function') throw new Error('Web Audio output selection is not available in this browser.');
+    await applySink((id) => c.setSinkId(id), outputId);
+    const reported = typeof c.sinkId === 'string' ? c.sinkId : (c.sinkId && c.sinkId.type) || '';
+    if (typeof c.sinkId === 'string' && c.sinkId !== outputId) throw new Error('The browser did not switch Web Audio to the selected device.');
+    bus.connect(c.destination);
+    return { el: null, how: 'Web Audio output', reported };
+  }
+  async function routeTones(c, bus, outputId, method) {
+    if (!outputId) { bus.connect(c.destination); return { el: null, how: 'system default', reported: '' }; }
+    if (method === 'element') return routeViaElement(c, bus, outputId);
+    if (method === 'context') return routeViaContext(c, bus, outputId);
+    try { return await routeViaElement(c, bus, outputId); }
+    catch (e1) {
+      try { return await routeViaContext(c, bus, outputId); }
+      catch (e2) { throw new Error(e1.message + ' ' + e2.message + ' Try a recent Chrome or Edge, or set the deck as your system default output.'); }
     }
-    if (typeof c.setSinkId === 'function') {
-      await applySink((id) => c.setSinkId(id), outputId);
-      bus.connect(c.destination);
-      return { el: null, how: 'audio context' };
-    }
-    throw new Error('This browser cannot send generated tones to a chosen output device. Try a recent Chrome or Edge, or set the deck as your system default output.');
   }
 
   async function playTones() {
@@ -1964,11 +1982,12 @@ ul { padding-left: 1.25rem; }
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const outputId = $('biasOutput')?.value || '';
+      const method = $('biasRoute')?.value || 'auto';
       const outLabel = outputId ? ($('biasOutput').selectedOptions[0]?.textContent || 'the selected output') : 'the system default output';
-      c = new AudioCtx();
+      c = (outputId && method === 'context') ? new AudioCtx({ sinkId: outputId }) : new AudioCtx();
       await c.resume();
       const g = c.createGain(); g.gain.value = 0;
-      const route = await routeTones(c, g, outputId);
+      const route = await routeTones(c, g, outputId, method);
       const level = Math.pow(10, Number($('biasToneLevel').value) / 20);
       const oscs = [lowHz(), hfHz()].map((f) => { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.connect(g); o.start(); return o; });
       g.gain.setTargetAtTime(level, c.currentTime, 0.03);
@@ -1977,10 +1996,15 @@ ul { padding-left: 1.25rem; }
       $('biasTonePill').textContent = 'Playing ' + (lowHz() >= 1000 ? lowHz() / 1000 + ' kHz' : lowHz() + ' Hz') + ' + ' + hfHz() / 1000 + ' kHz';
       $('biasTonePill').className = 'pill rec-on';
       setStatus('Test tones are playing through ' + outLabel + '.', 'good');
+      const info = $('biasRouteInfo');
+      if (info) info.textContent = outputId
+        ? 'Route: ' + route.how + '. The browser confirms the selected device was applied. If you still hear the tones from another output, check Windows Sound settings and any audio mixer or virtual-cable software (such as Voicemeeter), then try the other routing method.'
+        : 'Route: system default output. Pick a device above to send the tones elsewhere.';
     } catch (e) {
       if (c) c.close().catch(() => {});
       st.toneCtx = null; st.osc = []; st.gain = null; st.toneEl = null;
       setStatus('Could not start the tone generator: ' + e.message, 'warn');
+      const info = $('biasRouteInfo'); if (info) info.textContent = 'No tones were played. Try the other routing method.';
     }
   }
 
@@ -2142,6 +2166,11 @@ ul { padding-left: 1.25rem; }
       if (st.toneCtx) await playTones();
       else setStatus('Bias tone output set to ' + ($('biasOutput').selectedOptions[0]?.textContent || 'system default') + '.', 'good');
     });
+    $('biasRoute').addEventListener('change', async () => {
+      try { localStorage.setItem('cassetteBiasRoute.v1', $('biasRoute').value); } catch (e) {}
+      if (st.toneCtx) await playTones();
+    });
+    try { const sr = localStorage.getItem('cassetteBiasRoute.v1'); if (sr) $('biasRoute').value = sr; } catch (e) {}
     const savedBiasOutput = localStorage.getItem('cassetteBiasOutput.v1');
     if (savedBiasOutput) $('biasOutput').value = savedBiasOutput;
     $('biasPlay').addEventListener('click', playTones);
