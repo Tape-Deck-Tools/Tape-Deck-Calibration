@@ -1876,7 +1876,7 @@ ul { padding-left: 1.25rem; }
   };
   const HIST_MS = 3000, TICK_MS = 100, RANGE_DB = 6;
   const st = { ctx: null, stream: null, anL: null, anR: null, bufL: null, bufR: null, raf: 0, last: 0, hist: [], cur: null, ref: null,
-               toneCtx: null, osc: [], gain: null };
+               toneCtx: null, osc: [], gain: null, toneEl: null };
 
   function save() {
     try {
@@ -1913,38 +1913,75 @@ ul { padding-left: 1.25rem; }
   }
   function stopTones() {
     if (st.toneCtx) {
-      const c = st.toneCtx, g = st.gain, o = st.osc;
+      const c = st.toneCtx, g = st.gain, o = st.osc, el = st.toneEl;
       try { g.gain.setTargetAtTime(0, c.currentTime, 0.03); } catch (e) {}
-      setTimeout(() => { o.forEach((x) => { try { x.stop(); } catch (e) {} }); c.close().catch(() => {}); }, 150);
+      setTimeout(() => {
+        o.forEach((x) => { try { x.stop(); } catch (e) {} });
+        if (el) { try { el.pause(); el.srcObject = null; } catch (e) {} }
+        c.close().catch(() => {});
+      }, 150);
     }
-    st.toneCtx = null; st.osc = []; st.gain = null;
+    st.toneCtx = null; st.osc = []; st.gain = null; st.toneEl = null;
     $('biasPlay').disabled = false; $('biasStopTone').disabled = true;
     $('biasTonePill').textContent = 'Tones off'; $('biasTonePill').className = 'pill';
   }
+  // Apply a sink (output device), asking the browser for permission if it insists.
+  async function applySink(fn, outputId) {
+    try { await fn(outputId); }
+    catch (e) {
+      if (e && e.name === 'NotAllowedError' && navigator.mediaDevices && navigator.mediaDevices.selectAudioOutput) {
+        await navigator.mediaDevices.selectAudioOutput({ deviceId: outputId });
+        await fn(outputId);
+      } else { throw e; }
+    }
+  }
+
+  // Send the tone bus to the chosen output. Routing through an <audio> element is the most
+  // widely reliable way to pick a device; AudioContext.setSinkId is the fallback.
+  async function routeTones(c, bus, outputId) {
+    if (!outputId) { bus.connect(c.destination); return { el: null, how: 'system default' }; }
+    if (typeof HTMLMediaElement.prototype.setSinkId === 'function' && c.createMediaStreamDestination) {
+      const dest = c.createMediaStreamDestination();
+      bus.connect(dest);
+      const el = new Audio();
+      el.srcObject = dest.stream;
+      await applySink((id) => el.setSinkId(id), outputId);
+      if (typeof el.sinkId === 'string' && el.sinkId !== outputId) throw new Error('The browser did not switch to the selected output device.');
+      await el.play();
+      return { el, how: 'audio element' };
+    }
+    if (typeof c.setSinkId === 'function') {
+      await applySink((id) => c.setSinkId(id), outputId);
+      bus.connect(c.destination);
+      return { el: null, how: 'audio context' };
+    }
+    throw new Error('This browser cannot send generated tones to a chosen output device. Try a recent Chrome or Edge, or set the deck as your system default output.');
+  }
+
   async function playTones() {
     stopTones();
+    let c = null;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const c = new AudioCtx();
       const outputId = $('biasOutput')?.value || '';
-      if (outputId) {
-        if (typeof c.setSinkId !== 'function') {
-          await c.close();
-          throw new Error('This browser does not support selecting an audio output for generated tones. Try a recent version of Chrome or Edge.');
-        }
-        await c.setSinkId(outputId);
-      }
+      const outLabel = outputId ? ($('biasOutput').selectedOptions[0]?.textContent || 'the selected output') : 'the system default output';
+      c = new AudioCtx();
       await c.resume();
       const g = c.createGain(); g.gain.value = 0;
+      const route = await routeTones(c, g, outputId);
       const level = Math.pow(10, Number($('biasToneLevel').value) / 20);
       const oscs = [lowHz(), hfHz()].map((f) => { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.connect(g); o.start(); return o; });
-      g.connect(c.destination);
       g.gain.setTargetAtTime(level, c.currentTime, 0.03);
-      st.toneCtx = c; st.osc = oscs; st.gain = g;
+      st.toneCtx = c; st.osc = oscs; st.gain = g; st.toneEl = route.el;
       $('biasPlay').disabled = true; $('biasStopTone').disabled = false;
       $('biasTonePill').textContent = 'Playing ' + (lowHz() >= 1000 ? lowHz() / 1000 + ' kHz' : lowHz() + ' Hz') + ' + ' + hfHz() / 1000 + ' kHz';
       $('biasTonePill').className = 'pill rec-on';
-    } catch (e) { setStatus('Could not start the tone generator: ' + e.message, 'warn'); }
+      setStatus('Test tones are playing through ' + outLabel + '.', 'good');
+    } catch (e) {
+      if (c) c.close().catch(() => {});
+      st.toneCtx = null; st.osc = []; st.gain = null; st.toneEl = null;
+      setStatus('Could not start the tone generator: ' + e.message, 'warn');
+    }
   }
 
   /* ---------- measurement ---------- */
